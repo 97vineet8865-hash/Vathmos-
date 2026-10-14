@@ -9,15 +9,28 @@
     <meta property="og:description" content="Vathmos: Objective recruitment decision-support system evaluating candidate resumes strictly against Job Descriptions using a 100-point rubric." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-  </head>
-  <body class="bg-[#0A0C11] text-[#F3F4F6] selection:bg-blue-600/30 selection:text-white">
-    <div id="root"></div>
-    <script>
-      if (typeof window !== 'undefined' && typeof window.Iterator === 'undefined') {
-        window.Iterator = class {};
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #0A0C11;
       }
-    </script>
-    <script type="module" src="/src/main.tsx"></script>
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe 
+      src="https://ais-pre-vxvge35ccnyfi6rhqj4xu5-502612456715.asia-east1.run.app" 
+      allow="clipboard-write; clipboard-read"
+      title="Vathmos Recruitment Decision-Support System">
+    </iframe>
   </body>
 </html>
-
