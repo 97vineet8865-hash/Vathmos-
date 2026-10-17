@@ -4,7 +4,11 @@
   "outputDirectory": ".",
   "rewrites": [
     {
-      "source": "/((?!assets/|api/).*)",
+      "source": "/api/:path*",
+      "destination": "https://ais-dev-vxvge35ccnyfi6rhqj4xu5-502612456715.asia-east1.run.app/api/:path*"
+    },
+    {
+      "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }
   ]
