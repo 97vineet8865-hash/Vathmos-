@@ -1,15 +1,14 @@
 {
   "version": 2,
-  "buildCommand": null,
   "outputDirectory": ".",
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://ais-dev-vxvge35ccnyfi6rhqj4xu5-502612456715.asia-east1.run.app/api/:path*"
+      "src": "/assets/(.*)",
+      "dest": "/assets/$1"
     },
     {
-      "source": "/((?!assets/).*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
