@@ -1,6 +1,6 @@
 {
   "name": "vathmos-frontend",
-  "version": "1.0.1792406178",
+  "version": "1.0.1792732500",
   "private": true,
   "scripts": {
     "build": "mkdir -p dist && cp index.html dist/index.html"
