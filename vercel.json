@@ -1,10 +1,10 @@
 {
   "version": 2,
-  "outputDirectory": ".",
+  "cleanUrls": true,
   "routes": [
     {
       "src": "/assets/(.*)",
-      "dest": "/assets/$1"
+      "dest": "/assets/"
     },
     {
       "src": "/(.*)",
