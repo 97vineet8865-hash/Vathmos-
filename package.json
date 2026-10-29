@@ -1,8 +1,8 @@
 {
-  "name": "vathmos",
+  "name": "vathmos-frontend",
+  "version": "1.0.1793296656",
   "private": true,
-  "version": "1.0.1",
   "scripts": {
-    "build": "echo \"Static bundle deployed successfully\""
+    "build": "mkdir -p dist && cp index.html dist/index.html && cp -r assets dist/ 2>/dev/null || true"
   }
 }
