@@ -1,8 +1,8 @@
 {
   "name": "vathmos-frontend",
-  "version": "1.0.1793296656",
+  "version": "1.0.3",
   "private": true,
   "scripts": {
-    "build": "mkdir -p dist && cp index.html dist/index.html && cp -r assets dist/ 2>/dev/null || true"
+    "build": "mkdir -p dist && cp index.html dist/index.html && cp index.html dist/404.html && cp index.html dist/dashboard.html && cp index.html dist/privacy.html && cp index.html dist/terms.html && cp index.html dist/refund.html && cp index.html dist/contact.html && cp -r assets dist/ 2>/dev/null || true"
   }
 }
