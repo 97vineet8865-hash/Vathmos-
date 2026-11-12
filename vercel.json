@@ -2,8 +2,12 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/copilot/send-email",
+      "destination": "/api/copilot-send-email"
+    },
+    {
       "source": "/api/(.*)",
-      "destination": "/api/"
+      "destination": "/api/$1"
     },
     {
       "source": "/(.*)",
