@@ -1,0 +1,157 @@
+import crypto from 'crypto';
+
+const ADMIN_EMAILS = [
+  'vathmossupport@gmail.com',
+  'vineet.842011@gmail.com',
+  '97.vineet.8865@gmail.com',
+];
+
+function getSupabaseConfig() {
+  let url = (
+    process.env.SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    'https://vzekrvpgxyjjnmkfwgot.supabase.co'
+  ).trim();
+  if (url.startsWith('https:') && !url.startsWith('https://')) {
+    url = 'https://' + url.slice('https:'.length).replace(/^\/+/, '');
+  }
+  url = url.replace(/\/+$/, '');
+
+  const secretKey = (
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    ''
+  ).trim();
+
+  return { url, secretKey };
+}
+
+function verifySessionToken(token: string, secret: string) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+  if (!data || !sig) return null;
+  const expectedSig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  if (sig !== expectedSig) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
+    if (payload.exp && Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+export default async function handler(req: any, res: any) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+
+  const { url, secretKey } = getSupabaseConfig();
+  if (!url || !secretKey) {
+    return res.status(500).json({ error: 'Supabase secret key is not configured.' });
+  }
+
+  const secret = process.env.SESSION_SECRET || secretKey || 'vathmos_secure_session_secret_2026_prod';
+  const authHeader = String(req.headers?.authorization || '');
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const session = verifySessionToken(token, secret);
+  if (!session) {
+    return res.status(401).json({ error: 'Invalid or expired session token.' });
+  }
+
+  const cleanEmail = String(session.email || '').trim().toLowerCase();
+  const isAdmin =
+    ADMIN_EMAILS.includes(cleanEmail) ||
+    session.role === 'Platform Administrator' ||
+    session.role === 'Founder & Lead Engineer';
+
+  if (session.tier !== 'agency' && !isAdmin) {
+    return res.status(403).json({
+      error: 'White-Label reporting is exclusively available on the Agency & Scale plan ($119/mo).',
+    });
+  }
+
+  const { enabled, companyName, logoDataUrl, tagline, contactEmail, website } = req.body || {};
+  const whiteLabel = {
+    enabled: enabled !== false,
+    companyName: String(companyName || 'Agency Partner').trim().slice(0, 100),
+    logoDataUrl:
+      logoDataUrl && typeof logoDataUrl === 'string' && logoDataUrl.startsWith('data:image')
+        ? logoDataUrl
+        : undefined,
+    tagline: tagline ? String(tagline).trim().slice(0, 150) : undefined,
+    contactEmail: contactEmail ? String(contactEmail).trim().slice(0, 100) : undefined,
+    website: website ? String(website).trim().slice(0, 100) : undefined,
+  };
+
+  try {
+    const patchResp = await fetch(
+      `${url}/rest/v1/vathmos_workspaces?email=eq.${encodeURIComponent(cleanEmail)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({
+          white_label: whiteLabel,
+          updated_at: new Date().toISOString(),
+        }),
+      }
+    );
+
+    let savedRows: any = await patchResp.json().catch(() => []);
+    if (!Array.isArray(savedRows) || savedRows.length === 0) {
+      const insertResp = await fetch(`${url}/rest/v1/vathmos_workspaces?on_conflict=email`, {
+        method: 'POST',
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=representation',
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+          user_id: session.userId,
+          company_name: whiteLabel.companyName,
+          role_title: session.role || 'Technical Recruiter',
+          tier: session.tier || 'free',
+          white_label: whiteLabel,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      savedRows = await insertResp.json().catch(() => []);
+    }
+
+    const row = Array.isArray(savedRows) ? savedRows[0] : savedRows;
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: session.userId,
+        email: cleanEmail,
+        name: row?.full_name || 'Recruiter',
+        companyName: row?.company_name || whiteLabel.companyName,
+        role: row?.role_title || session.role,
+        avatarColor: row?.avatar_color || '#0EA5E9',
+        isEmailVerified: true,
+        tier: row?.tier || session.tier,
+        evaluationsLimit: row?.evaluations_limit ?? 1000,
+        evaluationsUsed: row?.evaluations_used ?? 0,
+        interviewQuestionsLimit: row?.interview_questions_limit ?? 750,
+        interviewQuestionsUsed: row?.interview_questions_used ?? 0,
+        whiteLabel,
+      },
+      message: 'White-label branding preferences saved successfully.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to save white-label branding.' });
+  }
+}
