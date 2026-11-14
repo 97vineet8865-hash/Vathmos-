@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/auth/:action",
+      "destination": "/api/auth/%5Baction%5D?action=:action"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
