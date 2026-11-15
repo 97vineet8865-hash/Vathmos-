@@ -1,0 +1,31 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Ignore AI Studio chat upload media (126MB+ including >100MB video rejected by GitHub)
+.aistudio/
+public/assets/aistudio/
+*.mp4
+
+# Ignore temporary packaging bundles, backups, and debug scripts
+*.zip
+*.py
+*.html
+!/index.html
+backups/
+surge_deploy/
+audit_runner.cjs
+eval_engine.bundle.cjs
+eval_engine.js
+extracted_evaluator.js
+test_eval_direct.cjs
+clean-package.json
+clean_package.json
+clean_static_vercel.json
+vercel.package.json
+bun.lock

@@ -1,0 +1,6 @@
+{
+  "name": "Vathmos",
+  "description": "Vathmos: Objective recruitment decision-support system evaluating candidate resumes strictly against Job Descriptions using a 100-point rubric.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

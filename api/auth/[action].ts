@@ -278,6 +278,7 @@ export default async function handler(req: any, res: any) {
   const sessionSecret = getSessionSecret(secretKey);
 
   try {
+    // 1. SIGN UP
     if (action === 'signup' && req.method === 'POST') {
       const { name, email, password, companyName, role } = req.body || {};
       const cleanEmail = String(email || '').trim().toLowerCase();
@@ -320,6 +321,7 @@ export default async function handler(req: any, res: any) {
           });
         }
 
+        // Unverified pending account: refresh OTP + password cleanly
         const updResp = await fetch(`${url}/auth/v1/admin/users/${authUser.id}`, {
           method: 'PUT',
           headers: {
@@ -378,6 +380,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // 2. VERIFY EMAIL
     if (action === 'verify-email' && req.method === 'POST') {
       const { email, code } = req.body || {};
       const cleanEmail = String(email || '').trim().toLowerCase();
@@ -436,6 +439,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, token, user: safeUser });
     }
 
+    // 3. RESEND CODE
     if (action === 'resend-code' && req.method === 'POST') {
       const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
       const { authUser } = await findSupabaseUserByEmail(url, secretKey, cleanEmail);
@@ -467,6 +471,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // 4. SIGN IN
     if (action === 'signin' && req.method === 'POST') {
       const { email, password } = req.body || {};
       const cleanEmail = String(email || '').trim().toLowerCase();
@@ -485,6 +490,7 @@ export default async function handler(req: any, res: any) {
         passwordValid = hashPasswordSync(String(password), meta.salt) === meta.passwordHash;
       }
 
+      // Also validate against Supabase password sign-in endpoint if created natively
       if (!passwordValid) {
         const pwResp = await fetch(`${url}/auth/v1/token?grant_type=password`, {
           method: 'POST',
@@ -544,6 +550,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, token, user: safeUser });
     }
 
+    // 5. REQUEST PASSWORD RESET
     if (action === 'request-reset' && req.method === 'POST') {
       const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
       const { authUser } = await findSupabaseUserByEmail(url, secretKey, cleanEmail);
@@ -575,6 +582,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // 6. RESET PASSWORD
     if (action === 'reset-password' && req.method === 'POST') {
       const { email, code, newPassword } = req.body || {};
       const cleanEmail = String(email || '').trim().toLowerCase();
@@ -626,6 +634,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // 7. SESSION VALIDATION
     if (action === 'session' && req.method === 'GET') {
       const authHeader = String(req.headers?.authorization || '');
       const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
