@@ -10,7 +10,7 @@
       "destination": "/api/auth/%5Baction%5D?action=:action"
     },
     {
-      "source": "/((?!api/|assets/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
