@@ -110,7 +110,7 @@ export const RefundPolicyPage: React.FC = () => {
                 </p>
               </div>
               <p>
-                <strong className="text-slate-200">1. Unused Credit Bundles (Zero Consumption):</strong> If you purchased an evaluation bundle or subscription pass (Starter Pass $39 / ₹3,100, Pro, or Agency) and have <strong>consumed 0% of your credits (zero resumes evaluated)</strong>, you are eligible to request a 100% money-back refund within seven (7) calendar days of payment.
+                <strong className="text-slate-200">1. Unused Credit Bundles (Zero Consumption):</strong> If you purchased an evaluation bundle or pass (Starter Pass at $39 / ₹3,705 INR, Pro at $79 / ₹7,505 INR, or Agency at $119 / ₹11,305 INR) and have <strong>consumed 0% of your credits (zero resumes evaluated)</strong>, you are eligible to request a 100% money-back refund within seven (7) calendar days of payment.
               </p>
               <p>
                 <strong className="text-slate-200">2. Partially or Fully Consumed Bundles:</strong> Once any candidate resume has been audited or scorecards generated, the digital service is considered fully delivered. <strong>No partial, pro-rated, or proportional refunds are granted</strong> for active, used, or partially depleted credit pools.

@@ -678,7 +678,7 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
                   onClick={() => {
                     if (isLockedForStarter) {
                       setStarterLockNotice(
-                        '3-Mode Calibration (⚡ Strict & Lenient) is locked on Starter ($39). Available on Free Trial, Pro ($79), and Agency ($119).'
+                        '3-Mode Calibration (⚡ Strict & Lenient) is locked on Starter ($39 / ₹3,705). Available on Free Trial, Pro ($79 / ₹7,505), and Agency ($119 / ₹11,305).'
                       );
                       return;
                     }
@@ -699,7 +699,7 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
                   }`}
                   title={
                     isLockedForStarter
-                      ? `${mode === 'strict' ? 'Strict' : 'Lenient'} calibration mode is locked on the Starter tier. Upgrade to Pro ($79) or Agency ($119) to unlock.`
+                      ? `${mode === 'strict' ? 'Strict' : 'Lenient'} calibration mode is locked on the Starter tier. Upgrade to Pro ($79 / ₹7,505) or Agency ($119 / ₹11,305) to unlock.`
                       : mode === 'strict'
                       ? 'Strict: Uncompromising auditor discipline (zero tolerance for gaps)'
                       : mode === 'standard'

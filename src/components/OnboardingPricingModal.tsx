@@ -103,7 +103,7 @@ export const OnboardingPricingModal: React.FC = () => {
                 </div>
                 <div className="flex items-start gap-2 text-xs text-gray-400">
                   <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span>100-Point Mathematical Rubric</span>
+                  <span>Calibrated 100-Point Rubric</span>
                 </div>
               </div>
             </div>
@@ -136,7 +136,7 @@ export const OnboardingPricingModal: React.FC = () => {
                 <span className="text-[11px] text-gray-500 ml-auto">One-time</span>
               </div>
               <p className="mt-2 text-xs text-gray-400 leading-relaxed">
-                Ideal for a focused hiring sprint or single engineering role.
+                Ideal for a focused hiring sprint across any tech or business role.
               </p>
 
               <div className="mt-4 pt-4 border-t border-gray-800/80 space-y-2.5">

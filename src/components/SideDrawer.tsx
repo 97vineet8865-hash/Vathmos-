@@ -177,7 +177,7 @@ export const SideDrawer: React.FC<DrawerProps> = ({
                       onClick={() => {
                         if (isLocked) {
                           setLockedNotice(
-                            '3-Mode Calibration (⚡ Strict & Lenient) is locked on Starter ($39). Upgrade to Pro ($79) or Agency ($119) to unlock.'
+                            '3-Mode Calibration (⚡ Strict & Lenient) is locked on Starter ($39 / ₹3,705). Upgrade to Pro ($79 / ₹7,505) or Agency ($119 / ₹11,305) to unlock.'
                           );
                           return;
                         }
@@ -193,7 +193,7 @@ export const SideDrawer: React.FC<DrawerProps> = ({
                       }`}
                       title={
                         isLocked
-                          ? `${mode.label} calibration is locked on Starter tier. Available on Free Trial, Pro ($79), and Agency ($119).`
+                          ? `${mode.label} calibration is locked on Starter tier. Available on Free Trial, Pro ($79 / ₹7,505), and Agency ($119 / ₹11,305).`
                           : mode.desc
                       }
                     >

@@ -156,7 +156,7 @@ export const ContactPage: React.FC = () => {
               <div>
                 <h2 className="text-lg font-bold text-white">Send Us a Direct Message</h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Fill in the details below and our technical founding team will get right back to you.
+                  Fill in the details below and our founding team will get right back to you.
                 </p>
               </div>
 
@@ -231,7 +231,7 @@ export const ContactPage: React.FC = () => {
                       className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition cursor-pointer"
                     >
                       <option value="General Support & Inquiries">General Support & Inquiries</option>
-                      <option value="Starter Pass ($39) & Payment Assistance">Starter Pass ($39 / ₹3,100) & Payment Assistance</option>
+                      <option value="Starter Pass ($39 / ₹3,705) & Payment Assistance">Starter Pass ($39 / ₹3,705) & Payment Assistance</option>
                       <option value="Razorpay / Lemon Squeezy Gateway Inquiry">Razorpay / Lemon Squeezy Gateway Inquiry</option>
                       <option value="Enterprise / Agency Custom Volume Tier">Enterprise / Agency Custom Volume Tier</option>
                       <option value="Bug Report & Technical Feedback">Bug Report & Technical Feedback</option>

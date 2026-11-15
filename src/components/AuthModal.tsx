@@ -42,7 +42,7 @@ export const AuthModal: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [companyName, setCompanyName] = useState('');
-  const [role, setRole] = useState('Senior Technical Recruiter');
+  const [role, setRole] = useState('Senior Recruiter');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -552,10 +552,10 @@ export const AuthModal: React.FC = () => {
                     onChange={(e) => setRole(e.target.value)}
                     className="w-full pl-9 pr-2 py-2 bg-[#0E1018]/80 border border-white/[0.06] focus:border-blue-500 rounded-xl text-xs text-white focus:outline-none transition-colors cursor-pointer"
                   >
-                    <option value="Senior Technical Recruiter">Senior Recruiter</option>
+                    <option value="Senior Recruiter">Senior Recruiter</option>
                     <option value="Talent Acquisition Specialist">Talent Specialist</option>
                     <option value="HR Operations Manager">HR Manager</option>
-                    <option value="Engineering Hiring Manager">Hiring Manager</option>
+                    <option value="Hiring Manager">Hiring Manager</option>
                     <option value="Founder / CEO">Founder / CEO</option>
                   </select>
                 </div>

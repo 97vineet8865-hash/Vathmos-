@@ -563,7 +563,7 @@ I can help you:
 • **Ask "Who should I hire?"** for personal, strategic advice on who to advance
 • **Draft interview invitations or polite rejection notes** (with human review before sending)
 • **Compare candidates side-by-side**
-• **Suggest targeted technical interview questions**
+• **Suggest targeted interview questions**
 
 What decision would you like to review?`;
     }
@@ -572,7 +572,7 @@ What decision would you like to review?`;
 • **Hiring Advice:** Ask *"Who should I hire for this role?"* for human, insightful recommendations
 • **Draft Outreach:** Interview invitations and polite rejection letters with salary/notice period screening
 • **Safety First:** I will never send an email without your explicit review and click
-• **Candidate Analysis:** Compare candidate strengths and identify technical gaps
+• **Candidate Analysis:** Compare candidate strengths and identify skill gaps
 
 How can I assist your hiring decision right now?`;
   };
@@ -1050,7 +1050,7 @@ How can I assist your hiring decision right now?`;
               {/* Progress 2: AI Interview Question Guides */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-300 font-medium">AI Technical Interview Guides</span>
+                  <span className="text-zinc-300 font-medium">AI Role-Calibrated Interview Guides</span>
                   <span className="font-mono text-emerald-300 font-bold">
                     {guidesRemaining} / {guidesLimit} left{' '}
                     <span className="text-zinc-500 font-normal">({guidesUsed} used)</span>
@@ -1063,7 +1063,7 @@ How can I assist your hiring decision right now?`;
                   />
                 </div>
                 <p className="text-[10px] text-zinc-400">
-                  Each guide generates 3 tailored technical questions (1 Pro Verification + 2 Gap Probes with sample answers).
+                  Each guide generates 3 tailored interview questions (1 Pro Verification + 2 Gap Probes with sample answers).
                 </p>
               </div>
 
@@ -1078,7 +1078,7 @@ How can I assist your hiring decision right now?`;
                         ? currentUser.whiteLabel?.enabled
                           ? `Active: ${currentUser.whiteLabel.companyName || 'Custom Branding'}`
                           : 'Available: Upload your agency logo & set company name'
-                        : 'Agency ($119) exclusive: Replace Vathmos with your brand'}
+                        : 'Agency ($119 / ₹11,305) exclusive: Replace Vathmos with your brand'}
                     </span>
                   </div>
                 </div>
@@ -1106,7 +1106,7 @@ How can I assist your hiring decision right now?`;
                       <div>
                         <div className="flex justify-between items-center">
                           <span className="text-xs font-bold text-white">Starter</span>
-                          <span className="text-xs font-bold text-emerald-400">$39</span>
+                          <span className="text-xs font-bold text-emerald-400">$39 / ₹3,705</span>
                         </div>
                         <p className="text-[10px] text-zinc-400 mt-0.5">150 Evals • 80 Guides</p>
                         <p className="text-[9px] text-amber-400/90 mt-0.5 flex items-center gap-1">
@@ -1128,7 +1128,7 @@ How can I assist your hiring decision right now?`;
                       <div>
                         <div className="flex justify-between items-center">
                           <span className="text-xs font-bold text-white">Pro</span>
-                          <span className="text-xs font-bold text-sky-400">$79</span>
+                          <span className="text-xs font-bold text-sky-400">$79 / ₹7,505</span>
                         </div>
                         <p className="text-[10px] text-zinc-400 mt-0.5">400 Evals • 250 Guides</p>
                         <p className="text-[9px] text-sky-300 mt-0.5">✓ 3 Calibration Modes</p>
@@ -1147,7 +1147,7 @@ How can I assist your hiring decision right now?`;
                       <div>
                         <div className="flex justify-between items-center">
                           <span className="text-xs font-bold text-white">Agency</span>
-                          <span className="text-xs font-bold text-indigo-400">$119</span>
+                          <span className="text-xs font-bold text-indigo-400">$119 / ₹11,305</span>
                         </div>
                         <p className="text-[10px] text-zinc-400 mt-0.5">1k Evals • 750 Guides</p>
                         <p className="text-[9px] text-indigo-300 mt-0.5 font-medium">✓ White-Label PDF Branding</p>
@@ -1705,7 +1705,7 @@ How can I assist your hiring decision right now?`;
                     </span>
                   </p>
                   <p className="text-[10px] text-[#A1A1AA] text-center">
-                    Our engineering team reviews diagnostics and PDF parsing telemetry continuously.
+                    Our founding team reviews diagnostics and PDF parsing telemetry continuously.
                   </p>
 
                   <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
@@ -2012,7 +2012,7 @@ How can I assist your hiring decision right now?`;
             </div>
           )}
 
-          {/* TAB 4: WHITE-LABEL BRANDING (Agency $119 / Admin Exclusive) */}
+          {/* TAB 4: WHITE-LABEL BRANDING (Agency $119 / ₹11,305 / Admin Exclusive) */}
           {activeTab === 'whitelabel' && (
             <div className="space-y-4 text-xs animate-in fade-in duration-150">
               {currentUser.tier === 'agency' || isAdmin ? (
@@ -2128,7 +2128,7 @@ How can I assist your hiring decision right now?`;
                         type="text"
                         value={wlTagline}
                         onChange={(e) => setWlTagline(e.target.value)}
-                        placeholder="e.g. Executive Technical Search"
+                        placeholder="e.g. Executive & Talent Search"
                         className="w-full px-3 py-2 bg-[#18181B] border border-[#27272A] focus:border-indigo-500 rounded-lg text-xs text-white focus:outline-hidden transition"
                       />
                     </div>
@@ -2188,7 +2188,7 @@ How can I assist your hiring decision right now?`;
                             {(wlCompanyName || 'YOUR AGENCY NAME').toUpperCase()} CANDIDATE ASSESSMENT
                           </div>
                           <div className="text-[10px] text-slate-400">
-                            {wlTagline || 'CONFIDENTIAL TECHNICAL CANDIDATE EVALUATION'} • {wlContactEmail || currentUser.email}
+                            {wlTagline || 'CONFIDENTIAL CANDIDATE EVALUATION REPORT'} • {wlContactEmail || currentUser.email}
                           </div>
                         </div>
                       </div>
@@ -2228,7 +2228,7 @@ How can I assist your hiring decision right now?`;
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-white">
-                        White-Label PDF Reporting is Exclusive to Agency & Scale ($119/mo)
+                        White-Label PDF Reporting is Exclusive to Agency & Scale ($119 / ₹11,305)
                       </h4>
                       <p className="text-xs text-zinc-400">
                         Deliver client-ready assessment reports with 100% your own agency branding.
@@ -2265,7 +2265,7 @@ How can I assist your hiring decision right now?`;
                       onClick={() => handleUpgradeFromProfile('agency')}
                       className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold text-xs transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <span>Upgrade to Agency & Scale ($119) to Unlock White-Label</span>
+                      <span>Upgrade to Agency & Scale ($119 / ₹11,305) to Unlock White-Label</span>
                       <ArrowUpRight className="w-4 h-4" />
                     </button>
                   </div>

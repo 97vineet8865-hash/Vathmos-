@@ -236,7 +236,7 @@ function buildSafeUser(authUser: any, workspace?: any) {
     name: workspace?.full_name || meta.name || 'Recruiter',
     email,
     companyName: workspace?.company_name || meta.companyName || 'Organization',
-    role: workspace?.role_title || meta.role || 'Technical Recruiter',
+    role: workspace?.role_title || meta.role || 'Senior Recruiter',
     avatarColor: workspace?.avatar_color || meta.avatarColor || '#0EA5E9',
     isEmailVerified: Boolean(meta.isEmailVerified ?? true),
     tier,
@@ -249,6 +249,7 @@ function buildSafeUser(authUser: any, workspace?: any) {
     interviewQuestionsUsed:
       workspace?.interview_questions_used ?? meta.interviewQuestionsUsed ?? 0,
     whiteLabel: workspace?.white_label || meta.whiteLabel || undefined,
+    razorpayPaymentId: meta.razorpayPaymentId || undefined,
     createdAt: authUser?.created_at || workspace?.created_at || new Date().toISOString(),
   };
 }

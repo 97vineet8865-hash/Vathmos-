@@ -72,7 +72,7 @@ export default async function handler(req: any, res: any) {
 
   if (session.tier !== 'agency' && !isAdmin) {
     return res.status(403).json({
-      error: 'White-Label reporting is exclusively available on the Agency & Scale plan ($119/mo).',
+      error: 'White-Label reporting is exclusively available on the Agency & Scale plan ($119 / ₹11,305).',
     });
   }
 

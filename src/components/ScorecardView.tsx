@@ -110,7 +110,7 @@ export const ScorecardView: React.FC<ScorecardViewProps> = ({
 
   // Generate 1 Pro + 2 Cons Interview Questions on demand
   const handleGenerateQuestions = async () => {
-    const qLimit = currentUser?.interviewQuestionsLimit ?? 3;
+    const qLimit = currentUser?.interviewQuestionsLimit ?? 5;
     const qUsed = currentUser?.interviewQuestionsUsed ?? 0;
     const qRemaining = Math.max(0, qLimit - qUsed);
 
@@ -118,7 +118,7 @@ export const ScorecardView: React.FC<ScorecardViewProps> = ({
       setQuestionsError(
         `You have used all ${qLimit} interview question generations on your ${
           currentUser?.tier ? currentUser.tier.toUpperCase() : 'FREE'
-        } tier. Please upgrade to unlock 25, 150, or 500 generations.`
+        } tier. Please upgrade to unlock 80, 250, or 750 generations.`
       );
       return;
     }

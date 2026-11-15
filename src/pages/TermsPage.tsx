@@ -95,7 +95,7 @@ export const TermsPage: React.FC = () => {
               Platform Description & License Grant
             </h2>
             <p>
-              Vathmos provides technical recruitment teams, corporate talent acquisition departments, and staffing agencies with an objective, deterministic 100-point candidate scoring engine.
+              Vathmos provides Tech & Business recruitment teams, corporate talent acquisition departments, and staffing agencies with an objective, consistent 100-point candidate scoring engine.
             </p>
             <p className="text-slate-400 text-xs">
               Subject to these Terms and active subscription/credit standing, Vathmos grants you a non-exclusive, non-transferable, revocable license to access the platform, upload job descriptions and candidate resumes, generate ranked comparison leaderboards, and export evaluation PDF reports.
@@ -110,7 +110,7 @@ export const TermsPage: React.FC = () => {
             </h2>
             <div className="space-y-2 text-xs text-slate-400">
               <p>
-                <strong className="text-slate-200">1. Instant Digital Fulfillment:</strong> All purchases (Starter Pass at $39 / ₹3,100 INR, Pro, and Agency tiers) constitute digital SaaS goods. Upon successful payment callback via our authorized payment partners (<strong className="text-white">Razorpay</strong> and <strong className="text-white">Lemon Squeezy</strong>), evaluation credits are credited immediately and automatically to your authenticated account ID.
+                <strong className="text-slate-200">1. Instant Digital Fulfillment:</strong> All purchases (Starter Pass at $39 / ₹3,705 INR, Pro at $79 / ₹7,505 INR, and Agency at $119 / ₹11,305 INR tiers) constitute digital SaaS goods. Upon successful payment callback via our authorized payment partners (<strong className="text-white">Razorpay</strong> and <strong className="text-white">Lemon Squeezy</strong>), evaluation credits are credited immediately and automatically to your authenticated account ID.
               </p>
               <p>
                 <strong className="text-slate-200">2. Irreversible Credit Consumption:</strong> One (1) credit is consumed upon each candidate resume evaluation against a Job Description. Because evaluation immediately consumes non-recoverable real-time server compute and AI inference tokens, all consumed credits and delivered audits are strictly final and non-refundable. If an evaluation encounters an unrecoverable system processing error, the credit is automatically restored.

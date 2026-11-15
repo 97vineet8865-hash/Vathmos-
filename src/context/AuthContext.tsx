@@ -508,7 +508,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return {
         success: false,
         error:
-          'White-Label reporting is exclusively available on the Agency & Scale plan ($119/mo). Please upgrade to unlock custom branding.',
+          'White-Label reporting is exclusively available on the Agency & Scale plan ($119 / ₹11,305). Please upgrade to unlock custom branding.',
       };
     }
 
@@ -564,6 +564,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (res.ok) {
           const data = await res.json();
+          if (data.token) {
+            setToken(data.token);
+            try {
+              localStorage.setItem(TOKEN_KEY, data.token);
+            } catch {}
+          }
           if (data.user) {
             setCurrentUser(data.user);
             try {

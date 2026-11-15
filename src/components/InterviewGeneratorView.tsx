@@ -151,7 +151,7 @@ export const InterviewGeneratorView: React.FC<InterviewGeneratorViewProps> = ({
     if (!generatedQuestions || generatedQuestions.length === 0) return;
     const text = `# Vathmos Calibrated 3-Question Interview Guide: ${lastTargetCandidate}
 Target Role: ${effectiveJobDesc.slice(0, 80)}...
-Generated via Vathmos Deterministic Evaluation Engine
+Generated via Vathmos Calibrated Evaluation Engine
 
 ${generatedQuestions
   .map(
@@ -427,7 +427,7 @@ ${q.caution}`;
                   </div>
                   <div className="text-[11px] text-slate-400">
                     <span className="text-emerald-400 font-semibold">Top Strength: </span>
-                    {activeCandidate.result.pros?.[0] || 'Domain technical experience'}
+                    {activeCandidate.result.pros?.[0] || 'Demonstrated domain experience'}
                   </div>
                   <div className="text-[11px] text-slate-400">
                     <span className="text-rose-400 font-semibold">Primary Gap: </span>
@@ -627,13 +627,13 @@ ${q.caution}`;
             <span>Interview Question Generator Limits Per Tier</span>
           </h4>
           <p className="text-[11px] text-slate-400">
-            • <strong className="text-slate-300">Free Tier:</strong> 3 generations (9 calibrated questions total)
+            • <strong className="text-slate-300">Free Tier:</strong> 5 generations (15 calibrated questions total)
             <br className="sm:hidden" />
-            {' '}• <strong className="text-emerald-300">Starter ($39):</strong> 25 generations (75 questions)
+            {' '}• <strong className="text-emerald-300">Starter ($39 / ₹3,705):</strong> 80 generations (240 questions)
             <br className="sm:hidden" />
-            {' '}• <strong className="text-sky-300">Pro ($79):</strong> 150 generations (450 questions)
+            {' '}• <strong className="text-sky-300">Pro ($79 / ₹7,505):</strong> 250 generations (750 questions)
             <br className="sm:hidden" />
-            {' '}• <strong className="text-indigo-300">Agency ($119):</strong> 500 generations (1,500 questions)
+            {' '}• <strong className="text-indigo-300">Agency ($119 / ₹11,305):</strong> 750 generations (2,250 questions)
           </p>
         </div>
 

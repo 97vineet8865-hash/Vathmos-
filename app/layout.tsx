@@ -7,8 +7,8 @@ export interface Metadata {
 }
 
 export const metadata: Metadata = {
-  title: 'Vathmos - Objective Candidate Screening for Technical Teams',
-  description: 'Screen candidate resumes with zero bias and a deterministic 100-point rubric. In-RAM ephemeral processing with zero candidate resume storage.',
+  title: 'Vathmos - Objective Candidate Screening for Tech & Business Teams',
+  description: 'Screen candidate resumes across Technical and Business roles with zero bias and an evidence-based 100-point rubric. In-RAM ephemeral processing with zero candidate resume storage.',
 };
 
 export default function RootLayout({

@@ -811,10 +811,10 @@ app.post('/api/user/whitelabel', (req, res) => {
       user.role === 'Platform Administrator' ||
       user.role === 'Founder & Lead Engineer';
 
-    // Strict entitlement check: ONLY Agency & Scale plan ($119/mo) or platform admin can configure white-label
+    // Strict entitlement check: ONLY Agency & Scale plan ($119 / ₹11,305) or platform admin can configure white-label
     if (user.tier !== 'agency' && !isAdmin) {
       return res.status(403).json({
-        error: 'White-Label reporting is exclusively available on the Agency & Scale plan ($119/mo). Please upgrade to unlock custom branding.',
+        error: 'White-Label reporting is exclusively available on the Agency & Scale plan ($119 / ₹11,305). Please upgrade to unlock custom branding.',
       });
     }
 
