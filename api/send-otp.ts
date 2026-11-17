@@ -79,6 +79,13 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    const securityFrom = (
+      process.env.RESEND_FROM_EMAIL ||
+      (process.env.RESEND_FROM_DOMAIN
+        ? `Vathmos Security <security@${process.env.RESEND_FROM_DOMAIN.trim()}>`
+        : 'Vathmos Security <onboarding@resend.dev>')
+    ).trim();
+
     const resendRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -86,7 +93,7 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Vathmos Security <onboarding@resend.dev>',
+        from: securityFrom,
         to: cleanEmail,
         subject,
         html,

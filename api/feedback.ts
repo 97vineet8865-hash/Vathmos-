@@ -153,7 +153,12 @@ export default async function handler(req: any, res: any) {
 
     const primaryInbox = (process.env.SUPPORT_EMAIL || 'vathmossupport@gmail.com').trim();
     const defaultFounderInbox = (process.env.RESEND_OWNER_EMAIL || '97.vineet.8865@gmail.com').trim();
-    const fromAddress = (process.env.RESEND_FROM_EMAIL || 'Vathmos Support <onboarding@resend.dev>').trim();
+    const fromAddress = (
+      process.env.RESEND_FROM_EMAIL ||
+      (process.env.RESEND_FROM_DOMAIN
+        ? `Vathmos Support <support@${process.env.RESEND_FROM_DOMAIN.trim()}>`
+        : 'Vathmos Support <onboarding@resend.dev>')
+    ).trim();
 
     const buildTicketHtml = (noticeBanner?: string) => `<!DOCTYPE html>
 <html>

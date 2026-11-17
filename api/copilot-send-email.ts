@@ -95,6 +95,13 @@ export default async function handler(req: any, res: any) {
       resendError = 'Please enter a valid real recipient email (not @example.com) so Resend can deliver it.';
     } else {
       try {
+        const talentFrom = (
+          process.env.RESEND_FROM_EMAIL ||
+          (process.env.RESEND_FROM_DOMAIN
+            ? `Vathmos Talent <talent@${process.env.RESEND_FROM_DOMAIN.trim()}>`
+            : 'Vathmos Talent <onboarding@resend.dev>')
+        ).trim();
+
         const resendRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -102,7 +109,7 @@ export default async function handler(req: any, res: any) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            from: 'Vathmos Talent <onboarding@resend.dev>',
+            from: talentFrom,
             to: cleanEmail,
             subject: cleanSubject,
             html: emailHtml,

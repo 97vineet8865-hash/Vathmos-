@@ -123,6 +123,13 @@ async function sendOtpEmail(email: string, code: string, type: 'signup' | 'reset
 </body>
 </html>`;
 
+  const securityFrom = (
+    process.env.RESEND_FROM_EMAIL ||
+    (process.env.RESEND_FROM_DOMAIN
+      ? `Vathmos Security <security@${process.env.RESEND_FROM_DOMAIN.trim()}>`
+      : 'Vathmos Security <onboarding@resend.dev>')
+  ).trim();
+
   const resp = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -130,7 +137,7 @@ async function sendOtpEmail(email: string, code: string, type: 'signup' | 'reset
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Vathmos Security <onboarding@resend.dev>',
+      from: securityFrom,
       to: email,
       subject,
       html,

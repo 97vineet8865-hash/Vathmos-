@@ -190,8 +190,15 @@ async function sendOtpEmailViaResend(email: string, code: string, type: 'signup'
     return { data: null, error: { message: 'Resend API key not configured' } };
   }
 
+  const securityFrom = (
+    process.env.RESEND_FROM_EMAIL ||
+    (process.env.RESEND_FROM_DOMAIN
+      ? `Vathmos Security <security@${process.env.RESEND_FROM_DOMAIN.trim()}>`
+      : 'Vathmos Security <onboarding@resend.dev>')
+  ).trim();
+
   return await client.emails.send({
-    from: 'Vathmos Security <onboarding@resend.dev>',
+    from: securityFrom,
     to: cleanEmail,
     subject,
     html,
@@ -2155,8 +2162,15 @@ app.post('/api/copilot/send-email', async (req, res) => {
       resendError = 'Please enter a real email address (not @example.com) to deliver via Resend.';
     } else {
       try {
+        const talentFrom = (
+          process.env.RESEND_FROM_EMAIL ||
+          (process.env.RESEND_FROM_DOMAIN
+            ? `Vathmos Talent <talent@${process.env.RESEND_FROM_DOMAIN.trim()}>`
+            : 'Vathmos Talent <onboarding@resend.dev>')
+        ).trim();
+
         const resp = await resend.emails.send({
-          from: 'Vathmos Talent <onboarding@resend.dev>',
+          from: talentFrom,
           to: cleanEmail,
           subject,
           text: body,
@@ -2369,7 +2383,12 @@ app.post('/api/feedback', async (req, res) => {
 
     const primaryInbox = (process.env.SUPPORT_EMAIL || 'vathmossupport@gmail.com').trim();
     const defaultFounderInbox = (process.env.RESEND_OWNER_EMAIL || '97.vineet.8865@gmail.com').trim();
-    const fromAddress = (process.env.RESEND_FROM_EMAIL || 'Vathmos Support <onboarding@resend.dev>').trim();
+    const fromAddress = (
+      process.env.RESEND_FROM_EMAIL ||
+      (process.env.RESEND_FROM_DOMAIN
+        ? `Vathmos Support <support@${process.env.RESEND_FROM_DOMAIN.trim()}>`
+        : 'Vathmos Support <onboarding@resend.dev>')
+    ).trim();
 
     let emailDelivered = false;
     let deliveredTo: string | null = null;
