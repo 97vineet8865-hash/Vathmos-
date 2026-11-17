@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import dns from 'dns';
 import dotenv from 'dotenv';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
@@ -446,6 +447,62 @@ app.post('/api/send-otp', handleOtpDispatch);
 
 // --- SERVER-SIDE AUTHENTICATION ROUTES ---
 
+const REQUIRE_EMAIL_OTP = process.env.REQUIRE_EMAIL_OTP === 'true';
+
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  'mailinator.com',
+  'tempmail.com',
+  'temp-mail.org',
+  'guerrillamail.com',
+  'guerrillamailblock.com',
+  '10minutemail.com',
+  'yopmail.com',
+  'throwawaymail.com',
+  'trashmail.com',
+  'sharklasers.com',
+  'getnada.com',
+  'fakeinbox.com',
+  'maildrop.cc',
+  'dispostable.com',
+  'mintemail.com',
+  'tempr.email',
+]);
+
+async function validateRealEmailDomain(email: string): Promise<{ valid: boolean; error?: string }> {
+  const parts = String(email || '').toLowerCase().split('@');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return { valid: false, error: 'Please enter a valid email address.' };
+  }
+  const domain = parts[1].trim();
+  if (DISPOSABLE_EMAIL_DOMAINS.has(domain)) {
+    return {
+      valid: false,
+      error: 'Disposable or temporary email addresses are not permitted. Please use your real Gmail or work email.',
+    };
+  }
+  try {
+    const mxPromise = dns.promises.resolveMx(domain);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('DNS_TIMEOUT')), 2500)
+    );
+    const mxRecords = await Promise.race([mxPromise, timeoutPromise]);
+    if (!mxRecords || mxRecords.length === 0) {
+      return {
+        valid: false,
+        error: `The email domain "${domain}" does not appear to accept emails. Please use a valid email address.`,
+      };
+    }
+  } catch (err: any) {
+    if (err?.code === 'ENOTFOUND' || err?.code === 'ENODATA' || err?.code === 'ESERVFAIL') {
+      return {
+        valid: false,
+        error: `The email domain "${domain}" could not be verified as a real mail domain.`,
+      };
+    }
+  }
+  return { valid: true };
+}
+
 // 1. Sign Up Route
 app.post('/api/auth/signup', async (req, res) => {
   try {
@@ -459,6 +516,11 @@ app.post('/api/auth/signup', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     }
 
+    const domainCheck = await validateRealEmailDomain(cleanEmail);
+    if (!domainCheck.valid) {
+      return res.status(400).json({ error: domainCheck.error });
+    }
+
     const users = getStoredUsers();
     const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
     if (existing) {
@@ -468,6 +530,7 @@ app.post('/api/auth/signup', async (req, res) => {
     const salt = crypto.randomBytes(16).toString('hex');
     const passwordHash = hashPasswordSync(password, salt);
     const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const skipOtpForBeta = !REQUIRE_EMAIL_OTP;
 
     const newUser: ServerUser = {
       id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -478,9 +541,9 @@ app.post('/api/auth/signup', async (req, res) => {
       avatarColor: '#0EA5E9',
       salt,
       passwordHash,
-      isEmailVerified: false,
-      verificationCode: code,
-      verificationCodeExpires: Date.now() + 10 * 60 * 1000,
+      isEmailVerified: skipOtpForBeta,
+      verificationCode: skipOtpForBeta ? undefined : code,
+      verificationCodeExpires: skipOtpForBeta ? undefined : Date.now() + 10 * 60 * 1000,
       tier: 'free',
       evaluationsLimit: TIER_LIMITS.free.evaluations,
       evaluationsUsed: 0,
@@ -491,6 +554,23 @@ app.post('/api/auth/signup', async (req, res) => {
 
     users.push(newUser);
     saveStoredUsers(users);
+
+    if (skipOtpForBeta) {
+      const token = signSessionToken({
+        userId: newUser.id,
+        email: newUser.email,
+        role: newUser.role,
+        tier: newUser.tier,
+      });
+
+      return res.json({
+        success: true,
+        verifiedImmediate: true,
+        token,
+        user: sanitizeUser(newUser),
+        message: 'Public Beta account created and activated immediately.',
+      });
+    }
 
     // Send email via Resend
     sendOtpEmailViaResend(cleanEmail, code, 'signup').catch((err) =>
@@ -579,20 +659,27 @@ app.post('/api/auth/signin', (req, res) => {
     }
 
     if (!user.isEmailVerified) {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      user.verificationCode = code;
-      user.verificationCodeExpires = Date.now() + 10 * 60 * 1000;
-      saveStoredUsers(users);
+      if (!REQUIRE_EMAIL_OTP) {
+        user.isEmailVerified = true;
+        user.verificationCode = undefined;
+        user.verificationCodeExpires = undefined;
+        saveStoredUsers(users);
+      } else {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        user.verificationCode = code;
+        user.verificationCodeExpires = Date.now() + 10 * 60 * 1000;
+        saveStoredUsers(users);
 
-      sendOtpEmailViaResend(cleanEmail, code, 'signup').catch((err) =>
-        console.warn('Login verification email error:', err)
-      );
+        sendOtpEmailViaResend(cleanEmail, code, 'signup').catch((err) =>
+          console.warn('Login verification email error:', err)
+        );
 
-      return res.json({
-        success: false,
-        requireVerification: true,
-        message: 'Your email address is pending verification. A new code was sent to your email.',
-      });
+        return res.json({
+          success: false,
+          requireVerification: true,
+          message: 'Your email address is pending verification. A new code was sent to your email.',
+        });
+      }
     }
 
     const token = signSessionToken({
@@ -645,7 +732,7 @@ app.post('/api/auth/resend-code', (req, res) => {
 });
 
 // 5. Request Password Reset Route
-app.post('/api/auth/request-reset', (req, res) => {
+app.post('/api/auth/request-reset', async (req, res) => {
   try {
     const { email } = req.body || {};
     const cleanEmail = String(email || '').trim().toLowerCase();
@@ -661,12 +748,23 @@ app.post('/api/auth/request-reset', (req, res) => {
     user.verificationCodeExpires = Date.now() + 10 * 60 * 1000;
     saveStoredUsers(users);
 
-    sendOtpEmailViaResend(cleanEmail, code, 'reset').catch((err) =>
-      console.warn('Reset email error:', err)
-    );
+    const { error } = await sendOtpEmailViaResend(cleanEmail, code, 'reset').catch((e) => ({
+      data: null,
+      error: { message: e?.message || 'Reset delivery unavailable' },
+    }));
+
+    if (error) {
+      return res.json({
+        success: true,
+        delivered: false,
+        message:
+          'Automated password reset OTP emails are paused during Public Beta while sending domain verification completes. Please contact vathmossupport@gmail.com from your registered email for immediate recovery.',
+      });
+    }
 
     return res.json({
       success: true,
+      delivered: true,
       message: 'Password reset code has been sent to your email address.',
     });
   } catch (err: any) {

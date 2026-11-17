@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { validateEmailAddress, validatePasswordStrength } from '../utils/authSecurity';
+import { IS_PUBLIC_BETA } from '../utils/razorpayService';
 
 export const AuthModal: React.FC = () => {
   const {
@@ -123,10 +124,12 @@ export const AuthModal: React.FC = () => {
       });
 
       if (res.success) {
-        setSuccessMsg(
-          `Security verification code generated for ${email}. Please enter the 6-digit code to verify your account.`
-        );
-        setMode('verify');
+        if (!res.verifiedImmediate) {
+          setSuccessMsg(
+            `Security verification code generated for ${email}. Please enter the 6-digit code to verify your account.`
+          );
+          setMode('verify');
+        }
       } else {
         setError(res.error || 'Registration failed.');
       }
@@ -196,8 +199,15 @@ export const AuthModal: React.FC = () => {
     try {
       const res = await requestPasswordReset(email);
       if (res.success) {
-        setSuccessMsg(`A 6-digit security OTP has been sent to ${email}! Please check your Inbox (or Spam/Promotions).`);
-        setResetStep('confirm');
+        if (res.delivered === false) {
+          setSuccessMsg(
+            res.message ||
+              'Automated password reset OTP emails are paused during Public Beta. Contact vathmossupport@gmail.com for quick recovery.'
+          );
+        } else {
+          setSuccessMsg(`A 6-digit security OTP has been sent to ${email}! Please check your Inbox (or Spam/Promotions).`);
+          setResetStep('confirm');
+        }
       } else {
         setError(res.error || 'Could not send reset code.');
       }
@@ -298,7 +308,10 @@ export const AuthModal: React.FC = () => {
               {mode === 'forgot' && 'Reset Account Password'}
             </h2>
             <p className="text-xs text-zinc-400">
-              {mode === 'signup' && 'Real password security with email verification'}
+              {mode === 'signup' &&
+                (IS_PUBLIC_BETA
+                  ? 'Public Beta: instant workspace activation (domain-checked)'
+                  : 'Real password security with email verification')}
               {mode === 'signin' && 'Enter your registered credentials to access screening'}
               {mode === 'verify' && 'Confirm email ownership with 6-digit security code'}
               {mode === 'forgot' && 'Verify your email to create a new password'}
@@ -472,7 +485,9 @@ export const AuthModal: React.FC = () => {
                 />
               </div>
               <p className="text-[10px] text-zinc-500 mt-1">
-                A 6-digit confirmation code will be required to verify this address.
+                {IS_PUBLIC_BETA
+                  ? 'Public Beta: instant activation — disposable & fake domains are automatically blocked.'
+                  : 'A 6-digit confirmation code will be required to verify this address.'}
               </p>
             </div>
 
@@ -600,7 +615,7 @@ export const AuthModal: React.FC = () => {
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
-                  <span>Create & Verify Email</span>
+                  <span>{IS_PUBLIC_BETA ? 'Create Free Beta Account' : 'Create & Verify Email'}</span>
                 </>
               )}
             </button>

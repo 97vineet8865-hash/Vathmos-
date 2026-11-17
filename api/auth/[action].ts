@@ -1,4 +1,62 @@
 import crypto from 'crypto';
+import dns from 'dns';
+
+const REQUIRE_EMAIL_OTP = process.env.REQUIRE_EMAIL_OTP === 'true';
+
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  'mailinator.com',
+  'tempmail.com',
+  'temp-mail.org',
+  'guerrillamail.com',
+  'guerrillamailblock.com',
+  '10minutemail.com',
+  'yopmail.com',
+  'throwawaymail.com',
+  'trashmail.com',
+  'sharklasers.com',
+  'getnada.com',
+  'fakeinbox.com',
+  'maildrop.cc',
+  'dispostable.com',
+  'mintemail.com',
+  'tempr.email',
+]);
+
+async function validateRealEmailDomain(email: string): Promise<{ valid: boolean; error?: string }> {
+  const parts = String(email || '').toLowerCase().split('@');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return { valid: false, error: 'Please enter a valid email address.' };
+  }
+  const domain = parts[1].trim();
+  if (DISPOSABLE_EMAIL_DOMAINS.has(domain)) {
+    return {
+      valid: false,
+      error: 'Disposable or temporary email addresses are not permitted. Please use your real Gmail or work email.',
+    };
+  }
+  try {
+    const mxPromise = dns.promises.resolveMx(domain);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('DNS_TIMEOUT')), 2500)
+    );
+    const mxRecords = await Promise.race([mxPromise, timeoutPromise]);
+    if (!mxRecords || mxRecords.length === 0) {
+      return {
+        valid: false,
+        error: `The email domain "${domain}" does not appear to accept emails. Please use a valid email address.`,
+      };
+    }
+  } catch (err: any) {
+    if (err?.code === 'ENOTFOUND' || err?.code === 'ENODATA' || err?.code === 'ESERVFAIL') {
+      return {
+        valid: false,
+        error: `The email domain "${domain}" could not be verified as a real mail domain.`,
+      };
+    }
+    // Fail-open on transient DNS timeout so legitimate providers are never blocked
+  }
+  return { valid: true };
+}
 
 const ADMIN_EMAILS = [
   'vathmossupport@gmail.com',
@@ -297,13 +355,19 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ error: 'Password must be at least 8 characters.' });
       }
 
-      const { authUser } = await findSupabaseUserByEmail(url, secretKey, cleanEmail);
+      const domainCheck = await validateRealEmailDomain(cleanEmail);
+      if (!domainCheck.valid) {
+        return res.status(400).json({ error: domainCheck.error });
+      }
+
+      const { authUser, workspace } = await findSupabaseUserByEmail(url, secretKey, cleanEmail);
       const isFounderAdmin = ADMIN_EMAILS.includes(cleanEmail);
       const defaultTier = isFounderAdmin ? 'agency' : 'free';
       const defaultLimits = TIER_LIMITS[defaultTier];
       const salt = crypto.randomBytes(16).toString('hex');
       const passwordHash = hashPasswordSync(String(password), salt);
       const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const skipOtpForBeta = !REQUIRE_EMAIL_OTP;
 
       const metadata = {
         name: String(name || 'Recruiter').trim(),
@@ -312,15 +376,17 @@ export default async function handler(req: any, res: any) {
         avatarColor: isFounderAdmin ? '#10B981' : '#0EA5E9',
         salt,
         passwordHash,
-        isEmailVerified: false,
-        verificationCode: code,
-        verificationCodeExpires: Date.now() + 10 * 60 * 1000,
+        isEmailVerified: skipOtpForBeta ? true : false,
+        verificationCode: skipOtpForBeta ? null : code,
+        verificationCodeExpires: skipOtpForBeta ? null : Date.now() + 10 * 60 * 1000,
         tier: defaultTier,
         evaluationsLimit: defaultLimits.evaluations,
         evaluationsUsed: 0,
         interviewQuestionsLimit: defaultLimits.interviewQuestions,
         interviewQuestionsUsed: 0,
       };
+
+      let finalAuthUser = authUser;
 
       if (authUser) {
         if (authUser.user_metadata?.isEmailVerified === true) {
@@ -329,7 +395,7 @@ export default async function handler(req: any, res: any) {
           });
         }
 
-        // Unverified pending account: refresh OTP + password cleanly
+        // Unverified pending account: refresh OTP/password or activate immediately in Beta OTP mode
         const updResp = await fetch(`${url}/auth/v1/admin/users/${authUser.id}`, {
           method: 'PUT',
           headers: {
@@ -347,6 +413,7 @@ export default async function handler(req: any, res: any) {
           const errData: any = await updResp.json().catch(() => ({}));
           return res.status(400).json({ error: errData?.msg || errData?.message || 'Registration update failed.' });
         }
+        finalAuthUser = await updResp.json().catch(() => ({ ...authUser, user_metadata: metadata }));
       } else {
         const createResp = await fetch(`${url}/auth/v1/admin/users`, {
           method: 'POST',
@@ -368,6 +435,30 @@ export default async function handler(req: any, res: any) {
             error: errData?.msg || errData?.message || 'Unable to create recruiter account.',
           });
         }
+        finalAuthUser = await createResp.json().catch(() => ({ id: cleanEmail, email: cleanEmail, user_metadata: metadata }));
+      }
+
+      if (skipOtpForBeta) {
+        const safeUser = buildSafeUser({ ...finalAuthUser, user_metadata: metadata }, workspace);
+        await upsertWorkspaceRow(url, secretKey, safeUser);
+
+        const token = signSessionToken(
+          {
+            userId: safeUser.id,
+            email: safeUser.email,
+            role: safeUser.role,
+            tier: safeUser.tier,
+          },
+          sessionSecret
+        );
+
+        return res.status(200).json({
+          success: true,
+          verifiedImmediate: true,
+          token,
+          user: safeUser,
+          message: 'Public Beta account created and activated immediately.',
+        });
       }
 
       const emailResult = await sendOtpEmail(cleanEmail, code, 'signup').catch(() => ({
@@ -516,28 +607,50 @@ export default async function handler(req: any, res: any) {
       }
 
       if (meta.isEmailVerified === false) {
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        await fetch(`${url}/auth/v1/admin/users/${authUser.id}`, {
-          method: 'PUT',
-          headers: {
-            apikey: secretKey,
-            Authorization: `Bearer ${secretKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            user_metadata: {
-              ...meta,
-              verificationCode: code,
-              verificationCodeExpires: Date.now() + 10 * 60 * 1000,
+        if (!REQUIRE_EMAIL_OTP) {
+          // Promote previously pending accounts cleanly during Public Beta OTP mode
+          const promotedMeta = {
+            ...meta,
+            isEmailVerified: true,
+            verificationCode: null,
+            verificationCodeExpires: null,
+          };
+          await fetch(`${url}/auth/v1/admin/users/${authUser.id}`, {
+            method: 'PUT',
+            headers: {
+              apikey: secretKey,
+              Authorization: `Bearer ${secretKey}`,
+              'Content-Type': 'application/json',
             },
-          }),
-        });
-        await sendOtpEmail(cleanEmail, code, 'signup').catch(() => {});
-        return res.status(200).json({
-          success: false,
-          requireVerification: true,
-          message: 'Your email address is pending verification. A new code was sent to your email.',
-        });
+            body: JSON.stringify({
+              email_confirm: true,
+              user_metadata: promotedMeta,
+            }),
+          }).catch(() => {});
+        } else {
+          const code = Math.floor(100000 + Math.random() * 900000).toString();
+          await fetch(`${url}/auth/v1/admin/users/${authUser.id}`, {
+            method: 'PUT',
+            headers: {
+              apikey: secretKey,
+              Authorization: `Bearer ${secretKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              user_metadata: {
+                ...meta,
+                verificationCode: code,
+                verificationCodeExpires: Date.now() + 10 * 60 * 1000,
+              },
+            }),
+          });
+          await sendOtpEmail(cleanEmail, code, 'signup').catch(() => {});
+          return res.status(200).json({
+            success: false,
+            requireVerification: true,
+            message: 'Your email address is pending verification. A new code was sent to your email.',
+          });
+        }
       }
 
       const safeUser = buildSafeUser(authUser, workspace);
@@ -583,9 +696,22 @@ export default async function handler(req: any, res: any) {
         }),
       });
 
-      await sendOtpEmail(cleanEmail, code, 'reset').catch(() => {});
+      const emailResult = await sendOtpEmail(cleanEmail, code, 'reset').catch(() => ({
+        delivered: false,
+        error: 'Email service restricted during Public Beta',
+      }));
+      if (!emailResult.delivered) {
+        return res.status(200).json({
+          success: true,
+          delivered: false,
+          message:
+            'Automated password reset OTP emails are paused during Public Beta while sending domain verification completes. Please contact vathmossupport@gmail.com from your registered email for immediate recovery.',
+        });
+      }
+
       return res.status(200).json({
         success: true,
+        delivered: true,
         message: 'Password reset code has been sent to your email address.',
       });
     }

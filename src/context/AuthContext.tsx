@@ -26,7 +26,7 @@ interface AuthContextType {
     password: string;
     companyName: string;
     role: string;
-  }) => Promise<{ success: boolean; error?: string; code?: string }>;
+  }) => Promise<{ success: boolean; verifiedImmediate?: boolean; error?: string; code?: string }>;
   signIn: (
     email: string,
     password: string
@@ -40,7 +40,7 @@ interface AuthContextType {
   ) => Promise<{ success: boolean; code?: string; error?: string }>;
   requestPasswordReset: (
     email: string
-  ) => Promise<{ success: boolean; code?: string; error?: string }>;
+  ) => Promise<{ success: boolean; delivered?: boolean; message?: string; code?: string; error?: string }>;
   resetPassword: (
     email: string,
     code: string,
@@ -229,14 +229,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser]);
 
-  // Sign Up: server-side verification, codes never returned in response payload
+  // Sign Up: server-side verification, supports immediate activation in Public Beta OTP mode
   const signUp = async (data: {
     name: string;
     email: string;
     password: string;
     companyName: string;
     role: string;
-  }): Promise<{ success: boolean; error?: string }> => {
+  }): Promise<{ success: boolean; verifiedImmediate?: boolean; error?: string }> => {
     const cleanEmail = data.email.trim().toLowerCase();
 
     const emailValidation = validateEmailAddress(cleanEmail);
@@ -271,6 +271,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: body.error || 'Registration failed.' };
       }
 
+      if (body.verifiedImmediate && body.token && body.user) {
+        setToken(body.token);
+        setCurrentUser(body.user as UserProfile);
+        try {
+          localStorage.setItem(TOKEN_KEY, body.token);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(body.user));
+        } catch {}
+        setIsAuthModalOpen(false);
+        setDispatchedNotification(null);
+        return { success: true, verifiedImmediate: true };
+      }
+
       // Verification code is sent via email, never exposed to browser
       setDispatchedNotification({
         email: cleanEmail,
@@ -279,7 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         timestamp: Date.now(),
       });
 
-      return { success: true };
+      return { success: true, verifiedImmediate: false };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to complete registration.' };
     }
@@ -421,7 +433,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Request password reset code
   const requestPasswordReset = async (
     email: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; delivered?: boolean; message?: string; error?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
     try {
       const res = await fetch('/api/auth/request-reset', {
@@ -435,6 +447,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: body.error || 'Failed to request reset.' };
       }
 
+      if (body.delivered === false) {
+        setDispatchedNotification(null);
+        return {
+          success: true,
+          delivered: false,
+          message: body.message,
+        };
+      }
+
       setDispatchedNotification({
         email: cleanEmail,
         code: '••••••',
@@ -442,7 +463,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         timestamp: Date.now(),
       });
 
-      return { success: true };
+      return { success: true, delivered: true, message: body.message };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Password reset request failed.' };
     }
