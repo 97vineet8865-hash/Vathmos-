@@ -2359,14 +2359,81 @@ app.post('/api/feedback', async (req, res) => {
       console.log('Webhook notify background log:', err)
     );
 
-    // Asynchronously forward email alert to vathmossupport@gmail.com
-    fetch('https://formsubmit.co/ajax/vathmossupport@gmail.com', {
+    const escapeHtml = (str: string) =>
+      String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const primaryInbox = (process.env.SUPPORT_EMAIL || 'vathmossupport@gmail.com').trim();
+    const defaultFounderInbox = (process.env.RESEND_OWNER_EMAIL || '97.vineet.8865@gmail.com').trim();
+    const fromAddress = (process.env.RESEND_FROM_EMAIL || 'Vathmos Support <onboarding@resend.dev>').trim();
+
+    let emailDelivered = false;
+    let deliveredTo: string | null = null;
+
+    const resend = getResendClient();
+    if (resend) {
+      const buildHtml = (notice?: string) => `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:24px;background:#0A0C11;color:#F3F4F6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#121622;border:1px solid #1E293B;border-radius:12px;padding:24px;">
+    <div style="font-size:18px;font-weight:800;color:#FFFFFF;margin-bottom:4px;">VATHMOS ${escapeHtml(newReport.type.toUpperCase())} REQUEST</div>
+    <div style="font-size:12px;color:#38BDF8;font-family:monospace;margin-bottom:16px;">Ref: ${escapeHtml(refId)} • Type: ${escapeHtml(newReport.type.toUpperCase())}</div>
+    ${notice ? `<div style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:#1E293B;border:1px solid #334155;font-size:12px;color:#FCD34D;">${escapeHtml(notice)}</div>` : ''}
+    <p style="font-size:13px;color:#CBD5E1;margin:0 0 8px 0;"><strong>From:</strong> ${escapeHtml(newReport.userName)} (${escapeHtml(newReport.userEmail)})</p>
+    <p style="font-size:13px;color:#CBD5E1;margin:0 0 16px 0;"><strong>Source:</strong> ${escapeHtml(String(newReport.telemetry?.source || 'web_app'))}</p>
+    <div style="background:#0B0E17;border:1px solid #1E293B;border-radius:8px;padding:16px;font-size:13px;line-height:1.6;color:#E2E8F0;white-space:pre-wrap;">${escapeHtml(newReport.description)}</div>
+  </div>
+</body>
+</html>`;
+
+      try {
+        const first = await resend.emails.send({
+          from: fromAddress,
+          to: [primaryInbox],
+          replyTo: newReport.userEmail.includes('@') ? newReport.userEmail : undefined,
+          subject: `[Vathmos ${newReport.type.toUpperCase()}] ${newReport.userName} (${refId})`,
+          html: buildHtml(),
+        });
+        if (!first.error) {
+          emailDelivered = true;
+          deliveredTo = primaryInbox;
+        } else {
+          const msg = String(first.error.message || '');
+          const ownerMatch = msg.match(/\(([^@\s)]+@[^@\s)]+\.[^)\s]+)\)/);
+          const fallbackInbox = (ownerMatch?.[1] || defaultFounderInbox).trim();
+          if (fallbackInbox && fallbackInbox.toLowerCase() !== primaryInbox.toLowerCase()) {
+            const retry = await resend.emails.send({
+              from: fromAddress,
+              to: [fallbackInbox],
+              replyTo: newReport.userEmail.includes('@') ? newReport.userEmail : undefined,
+              subject: `[Vathmos ${newReport.type.toUpperCase()}] ${newReport.userName} (${refId})`,
+              html: buildHtml(
+                `Note: Delivered to ${fallbackInbox} because Resend onboarding@resend.dev requires verifying vathmos.co.in at resend.com/domains to send directly to ${primaryInbox}.`
+              ),
+            });
+            if (!retry.error) {
+              emailDelivered = true;
+              deliveredTo = fallbackInbox;
+            }
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[EMAIL DISPATCH ${refId}] Resend notice:`, e?.message || e);
+      }
+    }
+
+    // Asynchronously forward email alert via FormSubmit as secondary backup
+    fetch(`https://formsubmit.co/ajax/${encodeURIComponent(primaryInbox)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Origin: 'https://vathmos.com',
-        Referer: 'https://vathmos.com/',
+        Origin: 'https://www.vathmos.co.in',
+        Referer: 'https://www.vathmos.co.in/',
       },
       body: JSON.stringify({
         name: newReport.userName,
@@ -2376,19 +2443,14 @@ app.post('/api/feedback', async (req, res) => {
         reference_id: refId,
         source: newReport.telemetry?.source || 'web_app',
       }),
-    })
-      .then(async (r) => {
-        const text = await r.text();
-        console.log(`[EMAIL DISPATCH ${refId}] FormSubmit response:`, text);
-      })
-      .catch((err) => {
-        console.error(`[EMAIL DISPATCH ${refId}] error:`, err);
-      });
+    }).catch(() => null);
 
     res.json({
       success: true,
       referenceId: refId,
       report: newReport,
+      emailDelivered,
+      deliveredTo,
       message: 'Feedback received and recorded successfully.',
     });
   } catch (err: any) {

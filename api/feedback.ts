@@ -147,17 +147,21 @@ export default async function handler(req: any, res: any) {
       telemetry: telemetry && typeof telemetry === 'object' ? telemetry : {},
     };
 
-    const dispatchPromises: Promise<any>[] = [];
+    let emailDelivered = false;
+    let deliveredTo: string | null = null;
+    let deliveryError: string | null = null;
 
-    // Forward support inquiry via Resend REST API
-    const resendKey = getResendApiKey();
-    if (resendKey) {
-      const html = `<!DOCTYPE html>
+    const primaryInbox = (process.env.SUPPORT_EMAIL || 'vathmossupport@gmail.com').trim();
+    const defaultFounderInbox = (process.env.RESEND_OWNER_EMAIL || '97.vineet.8865@gmail.com').trim();
+    const fromAddress = (process.env.RESEND_FROM_EMAIL || 'Vathmos Support <onboarding@resend.dev>').trim();
+
+    const buildTicketHtml = (noticeBanner?: string) => `<!DOCTYPE html>
 <html>
 <body style="margin:0;padding:24px;background:#0A0C11;color:#F3F4F6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <div style="max-width:600px;margin:0 auto;background:#121622;border:1px solid #1E293B;border-radius:12px;padding:24px;">
-    <div style="font-size:18px;font-weight:800;color:#FFFFFF;margin-bottom:4px;">VATHMOS SUPPORT TICKET</div>
+    <div style="font-size:18px;font-weight:800;color:#FFFFFF;margin-bottom:4px;">VATHMOS ${escapeHtml(cleanType.toUpperCase())} REQUEST</div>
     <div style="font-size:12px;color:#38BDF8;font-family:monospace;margin-bottom:16px;">Ref: ${escapeHtml(refId)} • Type: ${escapeHtml(cleanType.toUpperCase())}</div>
+    ${noticeBanner ? `<div style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:#1E293B;border:1px solid #334155;font-size:12px;color:#FCD34D;">${escapeHtml(noticeBanner)}</div>` : ''}
     <p style="font-size:13px;color:#CBD5E1;margin:0 0 8px 0;"><strong>From:</strong> ${escapeHtml(cleanName)} (${escapeHtml(cleanEmail)})</p>
     <p style="font-size:13px;color:#CBD5E1;margin:0 0 16px 0;"><strong>Source:</strong> ${escapeHtml(String(newReport.telemetry?.source || 'web_app'))}</p>
     <div style="background:#0B0E17;border:1px solid #1E293B;border-radius:8px;padding:16px;font-size:13px;line-height:1.6;color:#E2E8F0;white-space:pre-wrap;">${escapeHtml(newReport.description)}</div>
@@ -165,25 +169,89 @@ export default async function handler(req: any, res: any) {
 </body>
 </html>`;
 
+    const dispatchPromises: Promise<any>[] = [];
+
+    // 1. Forward support inquiry via Resend REST API (with automatic sandbox fallback)
+    const resendKey = getResendApiKey();
+    if (resendKey) {
       dispatchPromises.push(
-        fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${resendKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: 'Vathmos Support <onboarding@resend.dev>',
-            to: 'vathmossupport@gmail.com',
-            reply_to: cleanEmail.includes('@') ? cleanEmail : undefined,
-            subject: `[Vathmos ${cleanType.toUpperCase()}] ${cleanName} (${refId})`,
-            html,
-          }),
-        }).catch(() => null)
+        (async () => {
+          try {
+            const sendViaResend = async (toEmail: string, banner?: string) => {
+              const r = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${resendKey}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  from: fromAddress,
+                  to: toEmail,
+                  reply_to: cleanEmail.includes('@') ? cleanEmail : undefined,
+                  subject: `[Vathmos ${cleanType.toUpperCase()}] ${cleanName} (${refId})`,
+                  html: buildTicketHtml(banner),
+                }),
+              });
+              const json: any = await r.json().catch(() => ({}));
+              return { ok: r.ok, status: r.status, json };
+            };
+
+            const firstAttempt = await sendViaResend(primaryInbox);
+            if (firstAttempt.ok) {
+              emailDelivered = true;
+              deliveredTo = primaryInbox;
+              return;
+            }
+
+            // Resend onboarding@resend.dev sandbox restricts recipients to the Resend account owner's email
+            const errMessage = String(firstAttempt.json?.message || `HTTP ${firstAttempt.status}`);
+            deliveryError = errMessage;
+            if (firstAttempt.status === 403 || errMessage.includes('only send testing emails')) {
+              const ownerMatch = errMessage.match(/\(([^@\s)]+@[^@\s)]+\.[^)\s]+)\)/);
+              const fallbackInbox = (ownerMatch?.[1] || defaultFounderInbox).trim();
+              if (fallbackInbox && fallbackInbox.toLowerCase() !== primaryInbox.toLowerCase()) {
+                const retryAttempt = await sendViaResend(
+                  fallbackInbox,
+                  `Note: Delivered to ${fallbackInbox} because Resend onboarding@resend.dev requires verifying vathmos.co.in at resend.com/domains to send directly to ${primaryInbox}.`
+                );
+                if (retryAttempt.ok) {
+                  emailDelivered = true;
+                  deliveredTo = fallbackInbox;
+                  deliveryError = null;
+                  return;
+                }
+                deliveryError = String(retryAttempt.json?.message || `Retry HTTP ${retryAttempt.status}`);
+              }
+            }
+          } catch (e: any) {
+            deliveryError = e?.message || 'Resend dispatch error';
+          }
+        })()
       );
     }
 
-    // Optional Discord / Slack webhook alert
+    // 2. Also notify vathmossupport@gmail.com via FormSubmit if activated
+    dispatchPromises.push(
+      fetch(`https://formsubmit.co/ajax/${encodeURIComponent(primaryInbox)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Origin: 'https://www.vathmos.co.in',
+          Referer: 'https://www.vathmos.co.in/',
+        },
+        body: JSON.stringify({
+          name: cleanName,
+          email: cleanEmail,
+          _subject: `[Vathmos ${cleanType.toUpperCase()}] ${cleanName} (${refId})`,
+          message: newReport.description,
+          reference_id: refId,
+          source: newReport.telemetry?.source || 'web_app',
+        }),
+      }).catch(() => null)
+    );
+
+    // 3. Optional Discord / Slack webhook alert
     const webhookUrl = (process.env.DISCORD_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL || '').trim();
     if (webhookUrl) {
       const isDiscord = webhookUrl.includes('discord.com/api/webhooks');
@@ -223,6 +291,9 @@ export default async function handler(req: any, res: any) {
       success: true,
       referenceId: refId,
       report: newReport,
+      emailDelivered,
+      deliveredTo,
+      deliveryError,
       message: 'Feedback received and dispatched successfully.',
     });
   } catch (err: any) {
