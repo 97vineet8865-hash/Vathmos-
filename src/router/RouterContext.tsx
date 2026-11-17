@@ -16,8 +16,10 @@ const RouterContext = createContext<RouterContextType>({
 
 function normalizePath(rawPath: string): string {
   if (!rawPath || rawPath === '') return '/';
+  const withoutHash = rawPath.split('#')[0];
+  if (!withoutHash || withoutHash === '') return '/';
   // Strip trailing slashes except for root
-  const cleaned = rawPath.replace(/\/+$/, '');
+  const cleaned = withoutHash.replace(/\/+$/, '');
   return cleaned === '' ? '/' : cleaned;
 }
 
@@ -40,10 +42,9 @@ export const RouterProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const navigate = (path: string) => {
     const normalized = normalizePath(path);
+    const hash = path.includes('#') ? path.split('#')[1] : '';
     if (typeof window !== 'undefined') {
-      // Support hash jumps on same page if needed
-      if (path.startsWith('#') || (path.includes('#') && path.split('#')[0] === pathname)) {
-        const hash = path.includes('#') ? path.split('#')[1] : path.replace('#', '');
+      if (path.startsWith('#') || (hash && normalized === pathname)) {
         const elem = document.getElementById(hash);
         if (elem) {
           elem.scrollIntoView({ behavior: 'smooth' });
@@ -51,10 +52,17 @@ export const RouterProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
       }
 
-      if (window.location.pathname !== normalized) {
-        window.history.pushState({}, '', normalized);
+      const targetUrl = hash ? `${normalized}#${hash}` : normalized;
+      if (window.location.pathname !== normalized || hash) {
+        window.history.pushState({}, '', targetUrl);
         setPathname(normalized);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (hash) {
+          setTimeout(() => {
+            document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' });
+          }, 80);
+        } else {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
       } else {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }

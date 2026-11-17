@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Sparkles,
@@ -46,6 +47,15 @@ export const BetaAccessModal: React.FC<BetaAccessModalProps> = ({
       setReferenceId(null);
     }
   }, [isOpen, tierId, defaultName, defaultEmail]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) {
     return null;
@@ -106,7 +116,7 @@ export const BetaAccessModal: React.FC<BetaAccessModalProps> = ({
     }
   };
 
-  return (
+  const modalContent = (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
       role="dialog"
@@ -301,4 +311,6 @@ export const BetaAccessModal: React.FC<BetaAccessModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };
