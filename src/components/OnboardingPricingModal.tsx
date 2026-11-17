@@ -1,18 +1,24 @@
 import React, { useState } from 'react';
 import { Check, Sparkles, Zap, Shield, Crown, X, ArrowRight, Award, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { openRazorpayCheckout, TIERS } from '../utils/razorpayService';
+import { openRazorpayCheckout, TIERS, IS_PUBLIC_BETA } from '../utils/razorpayService';
+import { BetaAccessModal } from './BetaAccessModal';
 
 export const OnboardingPricingModal: React.FC = () => {
   const { currentUser, isOnboardingModalOpen, closeOnboardingModal, dismissOnboarding, upgradeTier } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedTier, setSelectedTier] = useState<'starter' | 'pro' | 'agency'>('pro');
+  const [betaTier, setBetaTier] = useState<'starter' | 'pro' | 'agency' | null>(null);
 
   if (!isOnboardingModalOpen || !currentUser) {
     return null;
   }
 
   const handleSelectPaidTier = (tierId: 'starter' | 'pro' | 'agency') => {
+    if (IS_PUBLIC_BETA) {
+      setBetaTier(tierId);
+      return;
+    }
     setIsProcessing(true);
     openRazorpayCheckout({
       tierId,
@@ -170,7 +176,7 @@ export const OnboardingPricingModal: React.FC = () => {
                 disabled={isProcessing}
                 className="w-full py-2.5 px-4 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 hover:text-white text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
               >
-                <span>Select Starter ($39)</span>
+                <span>{IS_PUBLIC_BETA ? 'Request Beta ($39)' : 'Select Starter ($39)'}</span>
               </button>
             </div>
           </div>
@@ -236,7 +242,7 @@ export const OnboardingPricingModal: React.FC = () => {
                 disabled={isProcessing}
                 className="w-full py-2.5 px-4 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-1.5"
               >
-                <span>Select Pro ($79)</span>
+                <span>{IS_PUBLIC_BETA ? 'Request Beta ($79)' : 'Select Pro ($79)'}</span>
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               </button>
             </div>
@@ -302,7 +308,7 @@ export const OnboardingPricingModal: React.FC = () => {
                 disabled={isProcessing}
                 className="w-full py-2.5 px-4 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
               >
-                <span>Select Agency ($119)</span>
+                <span>{IS_PUBLIC_BETA ? 'Request Beta ($119)' : 'Select Agency ($119)'}</span>
               </button>
             </div>
           </div>
@@ -313,7 +319,11 @@ export const OnboardingPricingModal: React.FC = () => {
         <div className="pt-4 border-t border-gray-800/70 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-400">
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Encrypted 256-bit checkout via Razorpay • 100% money-back guarantee • No recurring fees</span>
+            <span>
+              {IS_PUBLIC_BETA
+                ? 'Public Beta Free Trial active (5 Evals + 5 Guides) • Online checkout activating shortly'
+                : 'Encrypted 256-bit checkout via Razorpay • 100% money-back guarantee • No recurring fees'}
+            </span>
           </div>
 
           <button
@@ -324,6 +334,18 @@ export const OnboardingPricingModal: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <BetaAccessModal
+        isOpen={Boolean(betaTier)}
+        tierId={betaTier || 'starter'}
+        defaultName={currentUser.name || ''}
+        defaultEmail={currentUser.email || ''}
+        onClose={() => setBetaTier(null)}
+        onLaunchTrial={() => {
+          setBetaTier(null);
+          dismissOnboarding();
+        }}
+      />
     </div>
   );
 };

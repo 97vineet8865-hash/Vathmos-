@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
-import { openRazorpayCheckout, TIERS } from '../utils/razorpayService';
+import { openRazorpayCheckout, TIERS, IS_PUBLIC_BETA } from '../utils/razorpayService';
+import { BetaAccessModal } from '../components/BetaAccessModal';
 import React, { useState } from 'react';
 import { CreditCard, 
   Shield, 
@@ -30,12 +31,17 @@ import { Link, useRouter } from '../router/RouterContext';
 
 export const LandingPage: React.FC = () => {
   const [paymentSuccess, setPaymentSuccess] = useState<{ id: string; tierName: string } | null>(null);
+  const [betaModalTier, setBetaModalTier] = useState<'starter' | 'pro' | 'agency' | null>(null);
 
-  const { upgradeTier } = useAuth();
+  const { currentUser, upgradeTier } = useAuth();
   const handleSubscribe = (tierId: 'starter' | 'pro' | 'agency') => {
+    if (IS_PUBLIC_BETA) {
+      setBetaModalTier(tierId);
+      return;
+    }
     openRazorpayCheckout({
       tierId,
-      customerEmail: 'vathmossupport@gmail.com',
+      customerEmail: currentUser?.email || 'vathmossupport@gmail.com',
       onSuccess: (res) => {
         upgradeTier(tierId, res.razorpay_payment_id);
         setPaymentSuccess({ id: res.razorpay_payment_id, tierName: res.tier.name });
@@ -110,7 +116,11 @@ export const LandingPage: React.FC = () => {
           <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
           <span className="text-white font-black tracking-wide text-sm">Vathmos</span>
           <span className="text-slate-500">•</span>
-          <span>Catches AI Resume Fluff • Zero Black-Box Guessing</span>
+          <span>
+            {IS_PUBLIC_BETA
+              ? 'Public Beta Live • Free 5-Candidate Trial Open'
+              : 'Catches AI Resume Fluff • Zero Black-Box Guessing'}
+          </span>
         </div>
 
         {/* Catchy Headline */}
@@ -506,13 +516,21 @@ export const LandingPage: React.FC = () => {
         <div className="text-center space-y-3 max-w-2xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             <CreditCard className="w-3.5 h-3.5" />
-            <span>Transparent Credit & Subscription Tiers</span>
+            <span>
+              {IS_PUBLIC_BETA
+                ? 'Public Beta Pricing Preview • Gateway KYC In Progress'
+                : 'Transparent Credit & Subscription Tiers'}
+            </span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Simple, High-Margin Pricing for Growing Teams
+            {IS_PUBLIC_BETA
+              ? 'Free Public Beta Open — Founding Pricing Locked'
+              : 'Simple, High-Margin Pricing for Growing Teams'}
           </h2>
           <p className="text-sm text-slate-400">
-            No convoluted per-seat penalties. Pay for what you screen with instant digital delivery.
+            {IS_PUBLIC_BETA
+              ? 'Start today with 5 free evaluations & 5 AI interview guides. Online card & UPI checkout activates shortly — request founding beta access on any bundle below.'
+              : 'No convoluted per-seat penalties. Pay for what you screen with instant digital delivery.'}
           </p>
 
           {/* Currency Toggle */}
@@ -601,7 +619,11 @@ export const LandingPage: React.FC = () => {
               onClick={() => handleSubscribe('starter')}
               className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 active:scale-[0.98] text-white text-xs font-bold transition shadow-md shadow-sky-500/20 cursor-pointer flex items-center justify-center gap-2"
             >
-              <span>💳 Pay {pricingCycle === 'usd' ? '$39' : '₹3,705'} - Get Starter Pass</span>
+              <span>
+                {IS_PUBLIC_BETA
+                  ? `🚀 Request Beta Access — ${pricingCycle === 'usd' ? '$39' : '₹3,705'}`
+                  : `💳 Pay ${pricingCycle === 'usd' ? '$39' : '₹3,705'} - Get Starter Pass`}
+              </span>
             </button>
           </div>
 
@@ -650,7 +672,11 @@ export const LandingPage: React.FC = () => {
               onClick={() => handleSubscribe('pro')}
               className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-[0.98] text-white text-xs font-bold transition border border-slate-700 cursor-pointer flex items-center justify-center gap-2"
             >
-              <span>💳 Pay {pricingCycle === 'usd' ? '$79' : '₹7,505'} - Choose Pro Tier</span>
+              <span>
+                {IS_PUBLIC_BETA
+                  ? `🚀 Request Beta Access — ${pricingCycle === 'usd' ? '$79' : '₹7,505'}`
+                  : `💳 Pay ${pricingCycle === 'usd' ? '$79' : '₹7,505'} - Choose Pro Tier`}
+              </span>
             </button>
           </div>
 
@@ -713,7 +739,11 @@ export const LandingPage: React.FC = () => {
               onClick={() => handleSubscribe('agency')}
               className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 active:scale-[0.98] text-white text-xs font-bold transition shadow-md shadow-sky-500/20 cursor-pointer flex items-center justify-center gap-2"
             >
-              <span>💳 Pay {pricingCycle === 'usd' ? '$119' : '₹11,305'} - Choose Agency Tier</span>
+              <span>
+                {IS_PUBLIC_BETA
+                  ? `🚀 Request Beta Access — ${pricingCycle === 'usd' ? '$119' : '₹11,305'}`
+                  : `💳 Pay ${pricingCycle === 'usd' ? '$119' : '₹11,305'} - Choose Agency Tier`}
+              </span>
             </button>
           </div>
         </div>
@@ -863,6 +893,19 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Public Beta Founding Access Modal */}
+      <BetaAccessModal
+        isOpen={Boolean(betaModalTier)}
+        tierId={betaModalTier || 'starter'}
+        defaultName={currentUser?.name || ''}
+        defaultEmail={currentUser?.email || ''}
+        onClose={() => setBetaModalTier(null)}
+        onLaunchTrial={() => {
+          setBetaModalTier(null);
+          navigate('/dashboard');
+        }}
+      />
     </div>
   );
 };

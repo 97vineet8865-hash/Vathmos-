@@ -11,6 +11,13 @@ declare global {
 
 export const RAZORPAY_KEY_ID = "rzp_test_TrD0Uyh1LQYYhL";
 
+/**
+ * Public Beta feature flag.
+ * Keeps online checkout disabled while current-account & live gateway KYC are finalizing.
+ * Set VITE_LIVE_CHECKOUT=true and swap RAZORPAY_KEY_ID to live key to re-enable instant checkout.
+ */
+export const IS_PUBLIC_BETA = (import.meta as any).env?.VITE_LIVE_CHECKOUT !== 'true';
+
 export interface CheckoutTier {
   id: 'starter' | 'pro' | 'agency';
   name: string;
@@ -85,9 +92,14 @@ export async function openRazorpayCheckout({
   onSuccess: (paymentResponse: { razorpay_payment_id: string; tier: CheckoutTier }) => void;
   onDismiss?: () => void;
 }): Promise<void> {
+  if (IS_PUBLIC_BETA) {
+    if (onDismiss) onDismiss();
+    return;
+  }
+
   const isLoaded = await loadRazorpayScript();
   if (!isLoaded) {
-    alert('Failed to load secure payment gateway. Please check your internet connection.');
+    if (onDismiss) onDismiss();
     return;
   }
 

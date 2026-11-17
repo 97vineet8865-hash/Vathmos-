@@ -38,7 +38,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { CandidateItem, FeedbackItem } from '../types';
-import { openRazorpayCheckout, TIERS } from '../utils/razorpayService';
+import { openRazorpayCheckout, TIERS, IS_PUBLIC_BETA } from '../utils/razorpayService';
+import { BetaAccessModal } from './BetaAccessModal';
 import { isSupabaseConfigured, syncProfileToSupabase, checkBackendSupabaseStatus } from '../lib/supabaseClient';
 import { detectRoleDomain } from '../utils/clientRubricEvaluator';
 
@@ -73,8 +74,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const [showUpgradePlans, setShowUpgradePlans] = useState(false);
   const [upgradeNotification, setUpgradeNotification] = useState<string | null>(null);
+  const [betaTier, setBetaTier] = useState<'starter' | 'pro' | 'agency' | null>(null);
 
   const handleUpgradeFromProfile = (tierId: 'starter' | 'pro' | 'agency') => {
+    if (IS_PUBLIC_BETA) {
+      setBetaTier(tierId);
+      return;
+    }
     openRazorpayCheckout({
       tierId,
       customerEmail: currentUser?.email || 'vathmossupport@gmail.com',
@@ -1099,7 +1105,11 @@ How can I assist your hiring decision right now?`;
               {/* Interactive Upgrade Tier Drawer */}
               {showUpgradePlans && (
                 <div className="pt-3 border-t border-white/[0.08] space-y-2 animate-in fade-in duration-150">
-                  <p className="text-[11px] font-bold text-white">Choose a quota bundle (Instant Activation):</p>
+                  <p className="text-[11px] font-bold text-white">
+                    {IS_PUBLIC_BETA
+                      ? 'Public Beta Bundles (Request Founding Early Access):'
+                      : 'Choose a quota bundle (Instant Activation):'}
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {/* Starter */}
                     <div className="p-2.5 rounded-lg bg-[#0D1017] border border-emerald-500/30 flex flex-col justify-between">
@@ -1119,7 +1129,7 @@ How can I assist your hiring decision right now?`;
                         onClick={() => handleUpgradeFromProfile('starter')}
                         className="mt-2 w-full py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition cursor-pointer"
                       >
-                        Select Starter
+                        {IS_PUBLIC_BETA ? 'Request Beta' : 'Select Starter'}
                       </button>
                     </div>
 
@@ -1138,7 +1148,7 @@ How can I assist your hiring decision right now?`;
                         onClick={() => handleUpgradeFromProfile('pro')}
                         className="mt-2 w-full py-1 rounded bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-bold transition cursor-pointer"
                       >
-                        Select Pro
+                        {IS_PUBLIC_BETA ? 'Request Beta' : 'Select Pro'}
                       </button>
                     </div>
 
@@ -1158,7 +1168,7 @@ How can I assist your hiring decision right now?`;
                         onClick={() => handleUpgradeFromProfile('agency')}
                         className="mt-2 w-full py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition cursor-pointer"
                       >
-                        Select Agency
+                        {IS_PUBLIC_BETA ? 'Request Beta' : 'Select Agency'}
                       </button>
                     </div>
                   </div>
@@ -2265,7 +2275,11 @@ How can I assist your hiring decision right now?`;
                       onClick={() => handleUpgradeFromProfile('agency')}
                       className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold text-xs transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <span>Upgrade to Agency & Scale ($119 / ₹11,305) to Unlock White-Label</span>
+                      <span>
+                        {IS_PUBLIC_BETA
+                          ? 'Request Agency Beta Access ($119 / ₹11,305)'
+                          : 'Upgrade to Agency & Scale ($119 / ₹11,305) to Unlock White-Label'}
+                      </span>
                       <ArrowUpRight className="w-4 h-4" />
                     </button>
                   </div>
@@ -2300,6 +2314,18 @@ How can I assist your hiring decision right now?`;
           </button>
         </div>
       </div>
+
+      <BetaAccessModal
+        isOpen={Boolean(betaTier)}
+        tierId={betaTier || 'starter'}
+        defaultName={currentUser?.name || ''}
+        defaultEmail={currentUser?.email || ''}
+        onClose={() => setBetaTier(null)}
+        onLaunchTrial={() => {
+          setBetaTier(null);
+          closeProfileModal();
+        }}
+      />
     </div>
   );
 };
