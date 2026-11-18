@@ -332,7 +332,7 @@ export const LandingPage: React.FC = () => {
               <h3 className="text-lg font-bold text-white">100% Private (Zero Data Retention)</h3>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Candidate resumes and personal details are processed purely in temporary memory and <strong className="text-slate-200">wiped clean the second your report is generated</strong>. Files are never saved to disk or used to train AI models — keeping you compliant with client NDAs and privacy laws.
+              Candidate resumes and personal details are processed purely in temporary memory and <strong className="text-slate-200">wiped clean the second your report is generated</strong>. Files are never saved to disk or used to train AI models — keeping you aligned with client NDAs and strict privacy standards.
             </p>
             <div className="pt-2 text-xs text-emerald-300 flex items-center gap-1.5 font-semibold">
               <span>Transient In-Memory Privacy</span>

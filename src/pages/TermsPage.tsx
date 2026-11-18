@@ -116,7 +116,7 @@ export const TermsPage: React.FC = () => {
                 <strong className="text-slate-200">2. Irreversible Credit Consumption:</strong> One (1) credit is consumed upon each candidate resume evaluation against a Job Description. Because evaluation immediately consumes non-recoverable real-time server compute and AI inference tokens, all consumed credits and delivered audits are strictly final and non-refundable. If an evaluation encounters an unrecoverable system processing error, the credit is automatically restored.
               </p>
               <p>
-                <strong className="text-slate-200">3. Currency & Taxes:</strong> Pricing is displayed in USD ($) and Indian Rupees (INR ₹). Depending on your tax jurisdiction, local statutory goods and services taxes (GST / VAT) may be applied at checkout by our Merchant of Record.
+                <strong className="text-slate-200">3. Currency &amp; Taxes:</strong> Pricing is displayed in USD ($) and Indian Rupees (INR ₹). Depending on your billing region, applicable goods and services taxes (GST / VAT) may be included at checkout by our Merchant of Record.
               </p>
             </div>
           </section>
@@ -141,15 +141,15 @@ export const TermsPage: React.FC = () => {
           <section className="space-y-3 p-6 rounded-2xl bg-slate-900/40 border border-slate-800/60">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <span className="text-indigo-400 font-mono text-sm">04.</span>
-              Decision-Support Disclaimer & Regulatory Stance
+              Decision-Support Disclaimer &amp; Human Oversight
             </h2>
             <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs space-y-2">
               <div className="flex items-center gap-2 font-bold text-amber-300">
                 <AlertTriangle className="w-4 h-4" />
-                <span>Statutory Human Decision-Support Notice</span>
+                <span>Human Decision-Support Notice</span>
               </div>
               <p className="leading-relaxed">
-                Vathmos is an assistive talent auditing tool designed to eliminate keyword-stuffing bias and surface objective evidence. <strong>Vathmos does NOT make hiring decisions, adverse employment choices, or automatic disqualifications.</strong> All final employment determinations, interview invitations, and candidate communications remain the sole responsibility of human recruiting personnel in compliance with local labor and EEOC regulations.
+                Vathmos is an assistive talent auditing tool designed to eliminate keyword-stuffing bias and surface objective evidence. <strong>Vathmos does NOT make hiring decisions, adverse employment choices, or automatic disqualifications.</strong> All final employment determinations, interview invitations, and candidate communications remain the sole responsibility of human recruiting personnel using fair, skills-based hiring practices.
               </p>
             </div>
           </section>
@@ -169,10 +169,10 @@ export const TermsPage: React.FC = () => {
           <section className="space-y-3 p-6 rounded-2xl bg-slate-900/40 border border-slate-800/60">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <span className="text-indigo-400 font-mono text-sm">06.</span>
-              Governing Law & Dispute Resolution
+              Dispute Resolution &amp; Jurisdiction
             </h2>
             <p className="text-xs text-slate-400 leading-relaxed">
-              These Terms of Service are governed by and construed in accordance with the laws of the Republic of India. Any legal dispute, controversy, or claim arising out of or relating to these terms shall be submitted to the exclusive jurisdiction of the competent courts in New Delhi / NCR, India.
+              Any dispute, controversy, or claim arising out of or relating to these terms shall be resolved exclusively in the competent courts of New Delhi / NCR, India.
             </p>
           </section>
         </div>

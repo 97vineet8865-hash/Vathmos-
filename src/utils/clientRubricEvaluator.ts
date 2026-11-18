@@ -657,9 +657,9 @@ function extractDynamicJdRequirements(jobDescription: string, alreadyTracked: Se
   const extracted: string[] = [];
   const seen = new Set<string>(Array.from(alreadyTracked).map((s) => s.toLowerCase()));
 
-  // Mine uppercase/mixed-case acronyms & certifications (e.g., CPA, SHRM, PMP, ERP, GAAP, GST, B2B, POSH)
+  // Mine uppercase/mixed-case acronyms & certifications (e.g., CPA, SHRM, PMP, ERP, GAAP, GST, B2B)
   const acronymMatches =
-    safeJD.match(/\b(CPA|CFA|CMA|SHRM|PHR|SPHR|PMP|MBA|CA|GAAP|IFRS|GST|TDS|SOP|SLA|OKR|KPI|ERP|CRM|ROAS|CAC|LTV|ARR|MRR|POSH|FDA|ISO|OSHA|HIPAA)\b/g) ||
+    safeJD.match(/\b(CPA|CFA|CMA|SHRM|PHR|SPHR|PMP|MBA|CA|GAAP|IFRS|GST|TDS|SOP|SLA|OKR|KPI|ERP|CRM|ROAS|CAC|LTV|ARR|MRR|FDA|ISO)\b/g) ||
     [];
   for (const ac of acronymMatches) {
     const norm = ac.toUpperCase();
@@ -768,9 +768,22 @@ export function sanitizeEvaluationResult(
     }
   }
 
-  const cons: string[] = Array.isArray(rawEval?.cons)
+  const resumeMetrics = safeResume.match(new RegExp(IMPACT_METRIC_RE.source, 'gi')) || [];
+  const falseMetricClaimRe =
+    /\b(not\s+quantified|unquantified|could\s+be\s+(?:further\s+)?quantified|lacks?\s+(?:quantif\w*|metrics|throughput|concrete\s+numbers)|no\s+(?:quantif\w*|metrics|numbers|throughput)|missing\s+(?:quantif\w*|metrics))\b/i;
+
+  const rawCons: string[] = Array.isArray(rawEval?.cons)
     ? rawEval.cons.map((c: any) => String(c || '').trim()).filter(Boolean).slice(0, 3)
     : [];
+  const cons: string[] = rawCons.map((conText) => {
+    if (resumeMetrics.length >= 2 && falseMetricClaimRe.test(conText)) {
+      if (missingRaw.length > 0) {
+        return `Requires targeted verification on JD gaps not evidenced in work history (${missingRaw.slice(0, 2).join(', ')}).`;
+      }
+      return `Verify direct individual ownership behind reported production metrics (${resumeMetrics.slice(0, 2).join(', ')}) during interview.`;
+    }
+    return conText;
+  });
   while (cons.length < 3) {
     if (cons.length === 0 && missingRaw.length > 0) {
       cons.push(`No explicit evidence found for target requirements: ${missingRaw.slice(0, 3).join(', ')}.`);

@@ -226,27 +226,32 @@ KEY PROS: ${Array.isArray(pros) ? pros.join(' | ') : topPro}
 KEY CONS: ${Array.isArray(cons) ? cons.join(' | ') : topCon1}
 RESUME CONTEXT: ${String(resumeText || '').slice(0, 3500)}`;
 
-      const modelConfigs: Array<{ model: string; thinkingLevel: ThinkingLevel; timeoutMs: number }> = [
-        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW, timeoutMs: 5200 },
-        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL, timeoutMs: 3200 },
+      const modelConfigs: Array<{ model: string; thinkingLevel: ThinkingLevel; timeoutMs: number; useZeroTemp: boolean }> = [
+        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW, timeoutMs: 10500, useZeroTemp: false },
+        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL, timeoutMs: 6000, useZeroTemp: true },
       ];
 
       for (const cfg of modelConfigs) {
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), cfg.timeoutMs);
         try {
+          const config: any = {
+            systemInstruction:
+              'Generate exactly 3 role-authentic, bias-free interview questions grounded strictly in the JD and candidate resume context.',
+            seed: 42,
+            responseMimeType: 'application/json',
+            responseSchema: interviewQuestionsSchema,
+            thinkingConfig: { thinkingLevel: cfg.thinkingLevel },
+            abortSignal: ac.signal,
+          };
+          if (cfg.useZeroTemp) {
+            config.temperature = 0;
+          }
+
           const response = await ai.models.generateContent({
             model: cfg.model,
             contents: prompt,
-            config: {
-              systemInstruction:
-                'Generate exactly 3 role-authentic, bias-free interview questions grounded strictly in the JD and candidate resume context.',
-              seed: 42,
-              responseMimeType: 'application/json',
-              responseSchema: interviewQuestionsSchema,
-              thinkingConfig: { thinkingLevel: cfg.thinkingLevel },
-              abortSignal: ac.signal,
-            },
+            config,
           });
           clearTimeout(timer);
 

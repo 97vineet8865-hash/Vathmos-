@@ -10,7 +10,7 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'ram' | 'gdpr' | 'eeoc' | 'ai_ethics' | 'terms'>('ram');
+  const [activeTab, setActiveTab] = useState<'ram' | 'privacy' | 'antibias' | 'ai_ethics' | 'terms'>('ram');
 
   if (!isOpen) return null;
 
@@ -31,14 +31,14 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 id="legal-charter-title" className="text-base font-bold text-white">
-                  Legal, Privacy & Compliance Charter
+                  Privacy, Anti-Bias &amp; Safeguards Charter
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                   Active Shield
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Vathmos Decision-Support Architecture • In-RAM Ephemeral Processing Standards
+                Vathmos Decision-Support Architecture • In-RAM Ephemeral Processing Principles
               </p>
             </div>
           </div>
@@ -69,28 +69,28 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('gdpr')}
+            onClick={() => setActiveTab('privacy')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'gdpr'
+              activeTab === 'privacy'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
             }`}
           >
             <Lock className="w-3.5 h-3.5" />
-            <span> Art. 17 & 22</span>
+            <span>Privacy &amp; Deletion</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('eeoc')}
+            onClick={() => setActiveTab('antibias')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'eeoc'
+              activeTab === 'antibias'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
             }`}
           >
             <Scale className="w-3.5 h-3.5" />
-            <span>EEOC & Anti-Bias</span>
+            <span>Fairness &amp; Anti-Bias</span>
           </button>
 
           <button
@@ -183,24 +183,24 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#0E1018] border border-white/[0.08] text-xs text-zinc-400 space-y-2">
-                <span className="font-semibold text-white">Why This Matters for Recruiter Compliance:</span>
+                <span className="font-semibold text-white">Why This Matters for Recruiter Trust:</span>
                 <p>
-                  Recruitment teams are legally liable for unauthorized data accumulation and leaks. By eliminating persistent candidate databases, Vathmos removes the attack surface for data breaches and simplifies enterprise data privacy compliance.
+                  Recruitment teams handle highly sensitive applicant details every day. By eliminating persistent candidate databases, Vathmos removes the attack surface for data breaches and protects candidate confidentiality end-to-end.
                 </p>
               </div>
             </div>
           )}
 
-          {/* TAB 2:  ARTICLES 17 & 22 */}
-          {activeTab === 'gdpr' && (
+          {/* TAB 2: ZERO-RETENTION PRIVACY & DELETION */}
+          {activeTab === 'privacy' && (
             <div className="space-y-5 animate-fadeIn">
               <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-200">
                 <div className="flex items-center gap-2 font-bold text-white text-sm mb-1">
                   <Lock className="w-4 h-4 text-emerald-400" />
-                  European Union General Data Protection Regulation () Alignment
+                  Zero-Retention Privacy &amp; Instant Data Deletion
                 </div>
                 <p className="text-xs text-emerald-200/90 leading-normal">
-                  Vathmos is architected to respect candidate privacy rights, specifically addressing candidate privacy and transparent evaluations.
+                  Vathmos is architected from the ground up to respect candidate privacy, minimize data exposure, and keep evaluations transparent.
                 </p>
               </div>
 
@@ -209,14 +209,14 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      What Is Stored & Not Stored
+                      Automatic Session-End Deletion
                     </span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      Compliant by Design
+                      Zero Storage
                     </span>
                   </div>
                   <p className="text-xs text-zinc-300 leading-relaxed">
-                    Under  Art. 17, candidates have the right to obtain the erasure of their personal data without undue delay. Because Vathmos maintains <strong>zero persistent database records</strong> of resumes or applicant PII, erasure occurs automatically upon session termination. No manual deletion workflows, orphan records, or database backups retain candidate identities.
+                    Because Vathmos maintains <strong>zero persistent database records</strong> of candidate resumes or personal contact details, erasure happens automatically as soon as your session ends. No orphan records or disk backups retain candidate identities.
                   </p>
                 </div>
 
@@ -224,14 +224,14 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      Article 22 — Automated Individual Decision-Making & Profiling
+                      Human-Controlled Decisions Only (No Automated Rejections)
                     </span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                       Advisory Only
                     </span>
                   </div>
                   <p className="text-xs text-zinc-300 leading-relaxed">
-                     Art. 22 provides that data subjects have the right not to be subject to a decision based solely on automated processing which produces legal effects or significantly affects them. Vathmos operates exclusively as an <strong>advisory decision-support system</strong>. Scores, pros, cons, and interview questions are suggestions to aid human reviewers. No employment offer, screening rejection, or compensation decision is ever automated by Vathmos.
+                    Vathmos operates exclusively as an <strong>advisory decision-support system</strong>. Scores, pros, cons, and interview questions exist solely to assist human reviewers. No employment offer, screening rejection, or hiring decision is ever automated by Vathmos.
                   </p>
                 </div>
 
@@ -239,52 +239,52 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      Article 5(1)(c) — Data Minimisation
+                      Strict Data Minimization
                     </span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                       Strict Minimum
                     </span>
                   </div>
                   <p className="text-xs text-zinc-300 leading-relaxed">
-                    Personal data processed is strictly limited to information voluntarily submitted by the candidate in their resume for evaluating suitability for the targeted job description. No secondary profiling, social media scraping, or cross-referencing is conducted.
+                    Processing is strictly limited to the resume text provided for evaluating suitability against your target job description. No background profiling, social media scraping, or third-party tracking is performed.
                   </p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 3: EEOC & ANTI-BIAS FRAMEWORK */}
-          {activeTab === 'eeoc' && (
+          {/* TAB 3: FAIRNESS & ANTI-BIAS SAFEGUARDS */}
+          {activeTab === 'antibias' && (
             <div className="space-y-5 animate-fadeIn">
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200">
                 <div className="flex items-center gap-2 font-bold text-white text-sm mb-1">
                   <Scale className="w-4 h-4 text-amber-400" />
-                  Equal Employment Opportunity Commission (EEOC) & Title VII Framework
+                  Skills-Only &amp; Fair Evaluation Safeguards
                 </div>
                 <p className="text-xs text-amber-200/90 leading-normal">
-                  Vathmos enforces strict structural guardrails to eliminate demographic bias, prevent disparate impact, and maintain compliance with Title VII of the Civil Rights Act, the ADEA, and the ADA.
+                  Vathmos enforces strict structural guardrails so every candidate is evaluated solely on job-relevant skills, experience depth, and verifiable work outcomes.
                 </p>
               </div>
 
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                  Protected Class Safeguards & Non-Discrimination
+                  Personal Attributes Strictly Excluded
                 </h3>
                 
                 <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3 text-xs">
                   <div className="flex items-center gap-2 text-white font-semibold">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    Strict Exclusion of Protected Characteristics
+                    Strict Exclusion of Personal &amp; Demographic Traits
                   </div>
                   <p className="text-zinc-300 leading-relaxed">
-                    Evaluation rubrics are restricted to job-relevant qualifications, hard technical proficiencies, and verifiable work history. The system strictly prohibits using or inferring:
+                    Evaluation rubrics are restricted to job-relevant qualifications, domain proficiencies, and verifiable work history. The system never scores or infers:
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 font-mono text-[11px] text-zinc-400">
-                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Race & Color</div>
-                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Gender & Sex</div>
-                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Age (ADEA)</div>
-                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Religion & Creed</div>
-                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Disability (ADA)</div>
+                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Race &amp; Ethnicity</div>
+                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Gender &amp; Sex</div>
+                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Age</div>
+                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Religion &amp; Creed</div>
+                    <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• Disability Status</div>
                     <div className="p-2 rounded bg-black/40 border border-white/[0.04]">• National Origin</div>
                   </div>
                 </div>
@@ -292,20 +292,20 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
                 <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2 text-xs">
                   <div className="text-white font-semibold flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    Anti-Keyword Stuffing & Evidence-Based Rubric
+                    Anti-Keyword Stuffing &amp; Evidence-Based Rubric
                   </div>
                   <p className="text-zinc-300 leading-relaxed">
-                    To prevent fraudulent keyword gaming while protecting non-traditional candidates, scoring allocates <strong>30% strictly to verifiable evidence</strong> (metrics, shipped deliverables, scale, architecture) rather than superficial buzzword counts.
+                    To prevent superficial keyword gaming while treating all applicants fairly, scoring allocates <strong>30% strictly to verifiable evidence</strong> (metrics, shipped deliverables, scale, outcomes) rather than buzzword repetition.
                   </p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2 text-xs">
                   <div className="text-white font-semibold flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    Auditable Evaluation Reasoning
+                    Transparent, Auditable Evaluation Reasoning
                   </div>
                   <p className="text-zinc-300 leading-relaxed">
-                    Every score includes explicit, transparent line-item evidence: exactly which stated requirements matched, which were missing, and a concise 2-sentence rationale for hiring manager audit trails.
+                    Every score includes explicit line-item evidence: which stated requirements matched, which were missing, verbatim resume quotes, and a concise rationale for human review.
                   </p>
                 </div>
               </div>
@@ -363,46 +363,46 @@ export const LegalCharterModal: React.FC<LegalCharterModalProps> = ({
           {activeTab === 'terms' && (
             <div className="space-y-5 animate-fadeIn">
               <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-200">
-                <div className="flex items-center gap-2 font-bold text-white text-sm mb-1">
-                  <UserCheck className="w-4 h-4 text-indigo-400" />
-                  Human-in-the-Loop Decision Shield & Legal Terms
-                </div>
-                <p className="text-xs text-indigo-200/90 leading-normal">
-                  Vathmos is an advisory technical decision-support tool. The human recruiter and employer organization remain solely responsible for all recruitment decisions.
-                </p>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2">
-                  <div className="text-white font-semibold flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    1. Advisory Benchmarks Only
+                  <div className="flex items-center gap-2 font-bold text-white text-sm mb-1">
+                    <UserCheck className="w-4 h-4 text-indigo-400" />
+                    Human-in-the-Loop Decision Shield &amp; Accountability
                   </div>
-                  <p className="text-zinc-300 leading-relaxed">
-                    Evaluations, scores, skill match tallies, and interview questions generated by Vathmos are strictly decision-support benchmarks based on textual analysis. They do not constitute formal employment advice, legal counsel, or guarantees of candidate competency.
+                  <p className="text-xs text-indigo-200/90 leading-normal">
+                    Vathmos is an advisory technical decision-support tool. The human recruiter and employer organization remain solely responsible for all recruitment decisions.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2">
-                  <div className="text-white font-semibold flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    2. Mandatory Human Verification
+                <div className="space-y-3 text-xs">
+                  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2">
+                    <div className="text-white font-semibold flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      1. Advisory Benchmarks Only
+                    </div>
+                    <p className="text-zinc-300 leading-relaxed">
+                      Evaluations, scores, skill match tallies, and interview questions generated by Vathmos are strictly decision-support benchmarks based on textual analysis. They do not constitute formal employment advice or guarantees of candidate competency.
+                    </p>
                   </div>
-                  <p className="text-zinc-300 leading-relaxed">
-                    Interviewers and hiring managers must independently verify all claimed credentials, technical code samples, employment history, and references before extending employment offers or rejecting applicants.
-                  </p>
-                </div>
 
-                <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2">
-                  <div className="text-white font-semibold flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    3. Employer Accountability & Indemnification
+                  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2">
+                    <div className="text-white font-semibold flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      2. Mandatory Human Verification
+                    </div>
+                    <p className="text-zinc-300 leading-relaxed">
+                      Interviewers and hiring managers must independently verify all claimed credentials, technical work samples, employment history, and references before extending employment offers or rejecting applicants.
+                    </p>
                   </div>
-                  <p className="text-zinc-300 leading-relaxed">
-                    The employer organization retains sole legal accountability for all hiring determinations, compliance with local labor regulations, and fair employment practices. Vathmos assumes no liability for employment actions taken based upon advisory scorecard outputs.
-                  </p>
+
+                  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2">
+                    <div className="text-white font-semibold flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      3. Employer Final Responsibility
+                    </div>
+                    <p className="text-zinc-300 leading-relaxed">
+                      The employer organization retains full accountability for all final hiring determinations and fair workplace practices. Vathmos serves strictly as a scoring aid for human reviewers.
+                    </p>
+                  </div>
                 </div>
-              </div>
             </div>
           )}
         </div>

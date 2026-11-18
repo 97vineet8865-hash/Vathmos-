@@ -1227,6 +1227,19 @@ function hashString(str: any): string {
   return String(hash);
 }
 
+const EVAL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const evalResultCache = new Map<string, { result: any; cachedAt: number }>();
+
+function buildEvalCacheKey(jd: string, resume: string, mode: string): string {
+  const norm = (s: string) =>
+    String(s || '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  const combined = `${norm(jd)}||${norm(resume)}||${norm(mode)}`;
+  return `${hashString(combined)}-${combined.length}`;
+}
+
 // Single / Batch Evaluation helper: uses intelligent instant failover across healthy models
 async function generateEvaluationWithRetry(
   ai: GoogleGenAI,
@@ -1247,7 +1260,7 @@ async function generateEvaluationWithRetry(
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const ac = new AbortController();
-      const timeoutMs = hasAlternative ? 7000 : 9000;
+      const timeoutMs = hasAlternative ? 11000 : 9000;
       const timer = setTimeout(() => ac.abort(), timeoutMs);
 
       try {
@@ -1264,6 +1277,9 @@ async function generateEvaluationWithRetry(
           },
           abortSignal: ac.signal,
         };
+        if (model === 'gemini-3.1-flash-lite') {
+          config.temperature = 0;
+        }
 
         const response = await ai.models.generateContent({
           model,
@@ -1665,6 +1681,15 @@ app.post('/api/evaluate', async (req, res) => {
 
     // Starter tier is locked to standard mode only; Strict & Lenient are exclusive to Free, Pro ($79), and Agency ($119)
     const effectiveMode = usage.userTier === 'starter' ? 'standard' : (strictnessMode || 'standard');
+
+    const evalCacheKey = buildEvalCacheKey(jobDescription, resumeText, effectiveMode);
+    const cachedEval = evalResultCache.get(evalCacheKey);
+    if (cachedEval && Date.now() - cachedEval.cachedAt < EVAL_CACHE_TTL_MS) {
+      return res.json(
+        sanitizeEvaluationResult(cachedEval.result, jobDescription, resumeText, candidateName, effectiveMode)
+      );
+    }
+
     const domainCtx = detectRoleDomain(jobDescription);
     const ai = getGenAI();
 
@@ -1685,7 +1710,8 @@ CRITICAL RULES:
 2. ZERO FABRICATION ("NO UTER JUTER"): Every string in key_quotes and verifiable_evidence MUST be copied VERBATIM character-for-character from a work achievement, responsibility, or metric line in the Candidate Resume Text.
 3. FORBIDDEN QUOTE TYPES: NEVER put email addresses, phone numbers, URLs, home addresses, section headers alone, skill-tag lists, DOB, or "I hereby declare" boilerplate in key_quotes or verifiable_evidence.
 4. CROSS-DOMAIN MISMATCH RULE: If the candidate comes from an unrelated occupation with minimal overlap against the JD's core requirements, cap their total score below 45 and set recommendation to "Unqualified".
-5. EXACT ARITHMETIC: score = score_breakdown.total = hard_requirements (0-40) + domain_depth (0-30) + verifiable_evidence (0-30). Use granular non-rounded scores.`;
+5. EXACT ARITHMETIC: score = score_breakdown.total = hard_requirements (0-40) + domain_depth (0-30) + verifiable_evidence (0-30). Use granular non-rounded scores.
+6. ANTI-HALLUCINATION STRICT FACT-CHECK: Before writing any item in cons or missing_skills, verify it against the Candidate Resume Text and JD. NEVER claim outcomes are "unquantified", "could be further quantified", or "lack throughput impact" if concrete metrics (%, x, users, requests/min, revenue, latency) already exist in the resume. NEVER invent unrequested frameworks (e.g., GraphQL) or unsupported claims not grounded in the JD and resume.`;
 
         const singlePrompt = `${calibrationNote}
 
@@ -1714,6 +1740,11 @@ ${String(resumeText).slice(0, 6500)}`;
           candidateName,
           effectiveMode
         );
+        if (evalResultCache.size >= 500) {
+          const oldestKey = evalResultCache.keys().next().value;
+          if (oldestKey) evalResultCache.delete(oldestKey);
+        }
+        evalResultCache.set(evalCacheKey, { result: verified, cachedAt: Date.now() });
         return res.json(verified);
       } catch (aiErr: any) {
         console.log('[/api/evaluate] Gemini fallback to calibrated multi-domain engine:', String(aiErr?.message || aiErr).slice(0, 140));
@@ -1726,6 +1757,11 @@ ${String(resumeText).slice(0, 6500)}`;
       candidateName,
       effectiveMode
     );
+    if (evalResultCache.size >= 500) {
+      const oldestKey = evalResultCache.keys().next().value;
+      if (oldestKey) evalResultCache.delete(oldestKey);
+    }
+    evalResultCache.set(evalCacheKey, { result: fallbackResult, cachedAt: Date.now() });
     return res.json(fallbackResult);
   } catch (err: any) {
     console.error('Error in /api/evaluate:', err);
@@ -1794,7 +1830,7 @@ CRITICAL CALIBRATION MODE: OBJECTIVE 100-POINT AUDIT RUBRIC (STANDARD)
 `;
     }
 
-    const systemInstruction = `You are Vathmos, an objective cross-domain hiring evaluator for BOTH Technical AND Non-Technical roles (${domainCtx.domainLabel}). Copy key_quotes and verifiable_evidence strictly verbatim from actual achievements/responsibilities (NEVER contact info, URLs, headers, or invented text).`;
+    const systemInstruction = `You are Vathmos, an objective cross-domain hiring evaluator for BOTH Technical AND Non-Technical roles (${domainCtx.domainLabel}). Copy key_quotes and verifiable_evidence strictly verbatim from actual achievements/responsibilities (NEVER contact info, URLs, headers, or invented text). ANTI-HALLUCINATION RULE: Verify every con and missing_skill against the resume text; NEVER claim outcomes lack quantification or throughput if explicit numbers (%, x, users, requests/min, revenue, latency) exist in the resume, and never invent unrequested frameworks.`;
 
     const chunkArray = (arr: any[], size: number) =>
       Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
@@ -1811,6 +1847,22 @@ CRITICAL CALIBRATION MODE: OBJECTIVE 100-POINT AUDIT RUBRIC (STANDARD)
       const chunkResults = await Promise.all(
         chunk.map(async (c: any) => {
           try {
+            const batchCacheKey = buildEvalCacheKey(jobDescription, c.resumeText || '', effectiveBatchMode);
+            const cachedBatchEval = evalResultCache.get(batchCacheKey);
+            if (cachedBatchEval && Date.now() - cachedBatchEval.cachedAt < EVAL_CACHE_TTL_MS) {
+              return {
+                id: c.id,
+                status: 'completed',
+                result: sanitizeEvaluationResult(
+                  cachedBatchEval.result,
+                  jobDescription,
+                  c.resumeText || '',
+                  c.name,
+                  effectiveBatchMode
+                ),
+              };
+            }
+
             const singlePrompt = `Evaluate the provided candidate resume STRICTLY and ACCURATELY against the Job Description for "${domainCtx.roleTitle}" (${domainCtx.domainLabel}).
 
 ${rubricContext}
@@ -1842,6 +1894,11 @@ SCORING & VERBATIM EVIDENCE RULES:
               c.name,
               effectiveBatchMode
             );
+            if (evalResultCache.size >= 500) {
+              const oldestKey = evalResultCache.keys().next().value;
+              if (oldestKey) evalResultCache.delete(oldestKey);
+            }
+            evalResultCache.set(batchCacheKey, { result: verified, cachedAt: Date.now() });
 
             return {
               id: c.id,

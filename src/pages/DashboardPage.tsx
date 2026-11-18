@@ -15,8 +15,20 @@ import { LegalCharterModal } from '../components/LegalCharterModal';
 import { InterviewGeneratorView } from '../components/InterviewGeneratorView';
 import { CandidateItem, EvaluationResult } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { AlertCircle, Shield, ArrowLeft, ExternalLink, HelpCircle, Mic, FileText, Zap } from 'lucide-react';
+import { AlertCircle, Shield, ArrowLeft, ExternalLink, HelpCircle, Mic, FileText, Zap, CheckCircle2 } from 'lucide-react';
 import { Link, useRouter } from '../router/RouterContext';
+
+function normalizeResumeFingerprint(text: string): string {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isGenericCandidateName(name?: string): boolean {
+  const clean = String(name || '').trim();
+  return !clean || /^candidate(\s*\d+|\s*\(\d+\))?$/i.test(clean);
+}
 
 function toTitleCase(str: string): string {
   if (!str) return '';
@@ -114,7 +126,9 @@ export const DashboardPage: React.FC = () => {
   const [isLegalModalOpen, setIsLegalModalOpen] = useState<boolean>(false);
   const [isSideDrawerOpen, setIsSideDrawerOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
   const [candidateCounter, setCandidateCounter] = useState<number>(2);
+  const evalCacheRef = React.useRef<Map<string, EvaluationResult>>(new Map());
 
   // Side Drawer configurations
   const [minScoreFilter, setMinScoreFilter] = useState<number>(0);
@@ -215,52 +229,64 @@ export const DashboardPage: React.FC = () => {
     );
 
     try {
+      const cacheKey = `${normalizeResumeFingerprint(jobDescription)}||${normalizeResumeFingerprint(candidate.resumeText)}||${strictnessMode}`;
+      const cachedResult = evalCacheRef.current.get(cacheKey);
       let result: EvaluationResult;
-      try {
-        const response = await fetch('/api/evaluate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            jobDescription,
-            resumeText: candidate.resumeText,
-            candidateName: candidate.name,
-            strictnessMode,
-          }),
-        });
+      let usedCache = false;
 
-        if (response.ok) {
-          const rawResult = await response.json();
-          result = sanitizeEvaluationResult(rawResult, jobDescription, candidate.resumeText, candidate.name, strictnessMode);
-        } else {
-          // If server returns non-ok, fall back immediately to calibrated multi-domain client evaluation
+      if (cachedResult) {
+        result = cachedResult;
+        usedCache = true;
+      } else {
+        try {
+          const response = await fetch('/api/evaluate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              jobDescription,
+              resumeText: candidate.resumeText,
+              candidateName: candidate.name,
+              strictnessMode,
+            }),
+          });
+
+          if (response.ok) {
+            const rawResult = await response.json();
+            result = sanitizeEvaluationResult(rawResult, jobDescription, candidate.resumeText, candidate.name, strictnessMode);
+          } else {
+            // If server returns non-ok, fall back immediately to calibrated multi-domain client evaluation
+            result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
+          }
+        } catch (fetchErr) {
+          // Network error or offline - evaluate locally with 0 delay
           result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
         }
-      } catch (fetchErr) {
-        // Network error or offline - evaluate locally with 0 delay
-        result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
+        evalCacheRef.current.set(cacheKey, result);
       }
 
-      // Accurately update candidate name if parsed from resume text and not a placeholder
+      // Accurately update candidate name if parsed from resume text and existing name is generic
       const rawName = (result.candidate_name || '').trim();
       const isPlaceholder =
         !rawName ||
         ['candidate', 'jane doe', 'john doe', 'alex rivera', 'candidate name', 'unknown'].includes(
           rawName.toLowerCase()
         );
-      const chosenName = isPlaceholder ? candidate.name : toTitleCase(rawName);
+      const keepExistingValidName = !isGenericCandidateName(candidate.name);
+      const chosenName = keepExistingValidName || isPlaceholder ? candidate.name : toTitleCase(rawName);
 
       setCandidates((prev) => {
         const finalName = getUniqueCandidateName(chosenName, prev, targetId);
+        const syncedResult: EvaluationResult = { ...result, candidate_name: finalName };
         return prev.map((c) =>
           c.id === targetId
             ? {
                 ...c,
                 name: finalName,
                 status: 'completed',
-                result,
+                result: syncedResult,
                 error: undefined,
               }
             : c
@@ -271,7 +297,9 @@ export const DashboardPage: React.FC = () => {
         triggerCelebration();
       }
 
-      recordEvaluationUsed(1);
+      if (!usedCache) {
+        recordEvaluationUsed(1);
+      }
     } catch (err: any) {
       console.error('Evaluation failed:', err);
       let rawMsg = err.message || 'Failed to evaluate candidate.';
@@ -371,57 +399,68 @@ export const DashboardPage: React.FC = () => {
             let response: Response | null = null;
             let fetchErr: any = null;
 
-            // Automatic retry with quick backoff on any network hesitation
+            // Check client deterministic session cache first so unchanged resumes never fluctuate
+            const batchCacheKey = `${normalizeResumeFingerprint(jobDescription)}||${normalizeResumeFingerprint(candidate.resumeText)}||${strictnessMode}`;
+            const cachedBatch = evalCacheRef.current.get(batchCacheKey);
             let result: EvaluationResult;
-            try {
-              for (let attempt = 1; attempt <= 2; attempt++) {
-                try {
-                  response = await fetch('/api/evaluate', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                    },
-                    body: JSON.stringify({
-                      jobDescription,
-                      resumeText: candidate.resumeText,
-                      candidateName: candidate.name,
-                      strictnessMode,
-                    }),
-                  });
-                  if (response && response.ok) break;
-                  if (response && response.status === 403) {
-                    const errData = await response.json().catch(() => ({}));
-                    throw new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
-                  }
-                } catch (e) {
-                  fetchErr = e;
-                  if (attempt === 1) await new Promise((res) => setTimeout(res, 300));
-                }
-              }
 
-              if (response && response.ok) {
-                const rawBatchResult = await response.json();
-                result = sanitizeEvaluationResult(rawBatchResult, jobDescription, candidate.resumeText, candidate.name, strictnessMode);
-              } else if (response && response.status === 403) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
-              } else {
+            if (cachedBatch) {
+              result = cachedBatch;
+            } else {
+              try {
+                for (let attempt = 1; attempt <= 2; attempt++) {
+                  try {
+                    response = await fetch('/api/evaluate', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                      },
+                      body: JSON.stringify({
+                        jobDescription,
+                        resumeText: candidate.resumeText,
+                        candidateName: candidate.name,
+                        strictnessMode,
+                      }),
+                    });
+                    if (response && response.ok) break;
+                    if (response && response.status === 403) {
+                      const errData = await response.json().catch(() => ({}));
+                      throw new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
+                    }
+                  } catch (e) {
+                    fetchErr = e;
+                    if (attempt === 1) await new Promise((res) => setTimeout(res, 300));
+                  }
+                }
+
+                if (response && response.ok) {
+                  const rawBatchResult = await response.json();
+                  result = sanitizeEvaluationResult(rawBatchResult, jobDescription, candidate.resumeText, candidate.name, strictnessMode);
+                } else if (response && response.status === 403) {
+                  const errData = await response.json().catch(() => ({}));
+                  throw new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
+                } else {
+                  result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
+                }
+              } catch (evalErr: any) {
+                if (evalErr?.message?.includes('Evaluation limit') || evalErr?.message?.includes('limit reached')) {
+                  throw evalErr;
+                }
                 result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
               }
-            } catch (evalErr: any) {
-              if (evalErr?.message?.includes('Evaluation limit') || evalErr?.message?.includes('limit reached')) {
-                throw evalErr;
-              }
-              result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
+              evalCacheRef.current.set(batchCacheKey, result);
+              freshlyEvaluatedCount++;
             }
+
             const rawName = (result.candidate_name || '').trim();
             const isPlaceholder =
               !rawName ||
               ['candidate', 'jane doe', 'john doe', 'alex rivera', 'candidate name', 'unknown'].includes(
                 rawName.toLowerCase()
               );
-            const chosenName = isPlaceholder ? candidate.name : toTitleCase(rawName);
+            const keepExistingValidName = !isGenericCandidateName(candidate.name);
+            const chosenName = keepExistingValidName || isPlaceholder ? candidate.name : toTitleCase(rawName);
 
             if (result.score >= 85) {
               hasTopCandidate = true;
@@ -429,15 +468,14 @@ export const DashboardPage: React.FC = () => {
 
             setCandidates((prev) => {
               const finalName = getUniqueCandidateName(chosenName, prev, candidate.id);
-              // Ensure candidate_name inside result matches the deduplicated candidate name
-              result.candidate_name = finalName;
+              const syncedResult: EvaluationResult = { ...result, candidate_name: finalName };
               return prev.map((c) =>
                 c.id === candidate.id
                   ? {
                       ...c,
                       name: finalName,
                       status: 'completed',
-                      result,
+                      result: syncedResult,
                       error: undefined,
                     }
                   : c
@@ -473,11 +511,12 @@ export const DashboardPage: React.FC = () => {
         }
       };
 
+      let freshlyEvaluatedCount = 0;
       const workers = Array.from({ length: concurrency }, () => runWorker());
       await Promise.all(workers);
 
-      if (completedCount > 0) {
-        recordEvaluationUsed(completedCount);
+      if (freshlyEvaluatedCount > 0) {
+        recordEvaluationUsed(freshlyEvaluatedCount);
       }
 
       if (hasTopCandidate) {
@@ -547,63 +586,93 @@ export const DashboardPage: React.FC = () => {
     });
   };
 
-  // Bulk add candidates from multi-file upload
-  // Bulk add candidates from multi-file upload (preserves EVERY uploaded resume)
-  // Direct, deterministic 1-to-1 candidate addition: Upload N files -> Exactly N candidate slots created
-  // Direct, deterministic 1-to-1 candidate addition: Upload N files -> Exactly N candidate slots created
+  // Bulk add candidates from multi-file upload with automatic duplicate resume deduplication
   const handleBulkAddCandidates = (
     newFiles: Array<{ name: string; resumeText: string; fileName: string }>
   ) => {
     if (newFiles.length === 0) return;
+    setWorkspaceNotice(null);
 
-    setCandidates((prev) => {
-      const timestamp = Date.now();
+    const timestamp = Date.now();
+    const existingWithText = candidates.filter((c) => c.resumeText && c.resumeText.trim().length > 0);
+    const finalList = [...existingWithText];
 
-      // Filter out empty placeholder candidate (e.g. initial empty slot with 0 words)
-      const existingWithText = prev.filter((c) => c.resumeText && c.resumeText.trim().length > 0);
+    const fingerprintMap = new Map<string, { id: string; name: string }>();
+    for (const c of existingWithText) {
+      const textFp = normalizeResumeFingerprint(c.resumeText);
+      const fp =
+        textFp.length >= 40
+          ? textFp
+          : `file:${(c.fileName || c.name).toLowerCase()}:${textFp}`;
+      fingerprintMap.set(fp, { id: c.id, name: c.name });
+    }
 
-      // We start with existing candidates that have text
-      const finalList = [...existingWithText];
+    let firstAddedId: string | null = null;
+    let addedCount = 0;
+    const skippedDuplicates: Array<{ existingId: string; existingName: string; fileName: string }> = [];
 
-      newFiles.forEach((file, idx) => {
-        let cleanName = (file.name || '').trim();
-        if (!cleanName) {
-          cleanName = `Candidate ${finalList.length + 1}`;
-        }
+    newFiles.forEach((file, idx) => {
+      const rawText = file.resumeText || '';
+      const textFp = normalizeResumeFingerprint(rawText);
+      const fp =
+        textFp.length >= 40
+          ? textFp
+          : `file:${(file.fileName || `resume_${idx + 1}.pdf`).toLowerCase()}:${textFp}`;
 
-        // Check for duplicate names in the current list
-        let finalName = cleanName;
-        const nameCollisions = finalList.filter(
-          (c) => c.name.toLowerCase().trim() === cleanName.toLowerCase().trim()
-        );
+      const existingDup = fingerprintMap.get(fp);
+      if (existingDup) {
+        skippedDuplicates.push({
+          existingId: existingDup.id,
+          existingName: existingDup.name,
+          fileName: file.fileName || file.name,
+        });
+        return;
+      }
 
-        if (nameCollisions.length > 0) {
-          // If a candidate with this exact name already exists, suffix it cleanly: "Name (2)"
-          finalName = `${cleanName} (${nameCollisions.length + 1})`;
-        }
+      let cleanName = (file.name || '').trim();
+      if (!cleanName) {
+        cleanName = `Candidate ${finalList.length + 1}`;
+      }
 
-        const newCand: CandidateItem = {
-          id: `cand-${timestamp}-${idx}`,
-          name: finalName,
-          resumeText: file.resumeText || '',
-          fileName: file.fileName || `resume_${idx + 1}.pdf`,
-          status: 'idle',
-        };
+      const finalName = getUniqueCandidateName(cleanName, finalList, undefined, file.fileName);
+      const newId = `cand-${timestamp}-${idx}`;
+      const newCand: CandidateItem = {
+        id: newId,
+        name: finalName,
+        resumeText: rawText,
+        fileName: file.fileName || `resume_${idx + 1}.pdf`,
+        status: 'idle',
+      };
 
-        finalList.push(newCand);
-      });
-
-      setCandidateCounter((c) => c + newFiles.length);
-
-      // Select first candidate of newly added batch
-      setTimeout(() => {
-        if (existingWithText.length < finalList.length) {
-          setSelectedCandidateId(finalList[existingWithText.length].id);
-        }
-      }, 0);
-
-      return finalList;
+      finalList.push(newCand);
+      fingerprintMap.set(fp, { id: newId, name: finalName });
+      if (!firstAddedId) firstAddedId = newId;
+      addedCount++;
     });
+
+    if (finalList.length > 0) {
+      setCandidates(finalList);
+      if (addedCount > 0) {
+        setCandidateCounter((c) => c + addedCount);
+      }
+      if (firstAddedId) {
+        setSelectedCandidateId(firstAddedId);
+      } else if (skippedDuplicates.length > 0) {
+        setSelectedCandidateId(skippedDuplicates[0].existingId);
+      }
+    }
+
+    if (skippedDuplicates.length > 0) {
+      if (addedCount === 0) {
+        setWorkspaceNotice(
+          `Skipped ${skippedDuplicates.length} duplicate resume${skippedDuplicates.length > 1 ? 's' : ''} already loaded (matched "${skippedDuplicates[0].existingName}").`
+        );
+      } else {
+        setWorkspaceNotice(
+          `Added ${addedCount} unique resume${addedCount > 1 ? 's' : ''} and skipped ${skippedDuplicates.length} duplicate upload${skippedDuplicates.length > 1 ? 's' : ''} (${skippedDuplicates.map((d) => d.fileName).slice(0, 2).join(', ')}).`
+        );
+      }
+    }
   };
 
   const handleClearAllCandidates = () => {
@@ -701,6 +770,23 @@ export const DashboardPage: React.FC = () => {
                 style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
               />
             </div>
+          </div>
+        )}
+
+        {/* Workspace Duplicate / Info Notice Banner */}
+        {workspaceNotice && (
+          <div className="p-3.5 rounded-xl bg-sky-950/40 border border-sky-700/50 text-sky-200 text-xs sm:text-sm flex items-start gap-2.5">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-sky-400" />
+            <div className="flex-1">
+              <span>{workspaceNotice}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setWorkspaceNotice(null)}
+              className="text-sky-400 hover:text-sky-200 font-bold px-1 cursor-pointer"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -814,6 +900,7 @@ export const DashboardPage: React.FC = () => {
             onStrictnessModeChange={handleStrictnessModeChange}
             minScoreFilter={minScoreFilter}
             autoExtractName={autoExtractName}
+            onNotifyDuplicate={(msg) => setWorkspaceNotice(msg)}
           />
         </div>
 

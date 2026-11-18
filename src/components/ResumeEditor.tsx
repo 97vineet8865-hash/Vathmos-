@@ -25,6 +25,7 @@ interface ResumeEditorProps {
   onStrictnessModeChange?: (mode: 'standard' | 'strict' | 'lenient') => void;
   minScoreFilter?: number;
   autoExtractName?: boolean;
+  onNotifyDuplicate?: (msg: string) => void;
 }
 
 function cleanCandidateDisplay(str: string): string {
@@ -193,9 +194,11 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
   onStrictnessModeChange,
   minScoreFilter = 0,
   autoExtractName = true,
+  onNotifyDuplicate,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
   const { currentUser, openOnboardingModal } = useAuth();
   const [isParsing, setIsParsing] = useState<boolean>(false);
   const [parsingFileName, setParsingFileName] = useState<string>('');
@@ -205,8 +208,23 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
 
   const isStarterTier = currentUser?.tier === 'starter';
 
-  const currentCandidate =
-    candidates.find((c) => c.id === selectedCandidateId) || candidates[0];
+  const currentCandidateIndex = Math.max(
+    0,
+    candidates.findIndex((c) => c.id === selectedCandidateId)
+  );
+  const currentCandidate = candidates[currentCandidateIndex] || candidates[0];
+
+  // Always keep the active selected tab visibly scrolled into view (prevents header/editor slot mismatch)
+  React.useEffect(() => {
+    const container = tabScrollRef.current;
+    if (!container || !currentCandidate?.id) return;
+    const activeTabEl = container.querySelector<HTMLElement>(
+      `[data-candidate-tab-id="${currentCandidate.id}"]`
+    );
+    if (activeTabEl && typeof activeTabEl.scrollIntoView === 'function') {
+      activeTabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [currentCandidate?.id, candidates.length]);
 
   const readFileContent = async (
     file: File,
@@ -269,8 +287,35 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
         // Always update to the extracted real name from the resume or file
         const finalName = name || currentCandidate.name || 'Candidate';
 
-        // When uploading a single file for the current candidate (or clicking "Replace with PDF"),
-        // ALWAYS update/replace the current candidate directly. Never create an accidental duplicate tab!
+        // Check if this identical resume text already lives in another candidate slot
+        const normIncoming = content.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const existingDupSlot =
+          normIncoming.length >= 40
+            ? candidates.find(
+                (c) =>
+                  c.id !== currentCandidate.id &&
+                  c.resumeText &&
+                  c.resumeText.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === normIncoming
+              )
+            : undefined;
+
+        if (existingDupSlot && !currentCandidate.resumeText.trim()) {
+          // If uploading into an empty slot that duplicates another tab, switch to existing slot
+          onSelectCandidate(existingDupSlot.id);
+          onNotifyDuplicate?.(
+            `Skipped duplicate upload — identical resume is already open in "${cleanCandidateDisplay(existingDupSlot.name)}".`
+          );
+          return;
+        }
+
+        if (existingDupSlot) {
+          onNotifyDuplicate?.(
+            `Note: Identical resume text is also loaded in "${cleanCandidateDisplay(existingDupSlot.name)}".`
+          );
+        }
+
+        // When updating an existing candidate slot (or populating cleanly),
+        // update the current candidate directly.
         onUpdateCandidate(currentCandidate.id, {
           resumeText: content,
           fileName,
@@ -391,7 +436,10 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
   return (
     <div className="bg-[#12151E]/80 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-4 sm:p-5 flex flex-col h-full shadow-xs">
       {/* Candidate Tabs Bar */}
-      <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/[0.06] overflow-x-auto no-scrollbar scroll-smooth">
+      <div
+        ref={tabScrollRef}
+        className="flex items-center gap-2 pb-3 mb-3 border-b border-white/[0.06] overflow-x-auto no-scrollbar scroll-smooth"
+      >
         <div className="flex items-center gap-1.5 shrink-0">
           {candidates.map((c, index) => {
             const isSelected = c.id === currentCandidate?.id;
@@ -410,6 +458,7 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
                 key={c.id}
                 type="button"
                 id={`candidate-tab-${c.id}`}
+                data-candidate-tab-id={c.id}
                 onClick={() => onSelectCandidate(c.id)}
                 className={`group relative flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150 cursor-pointer whitespace-nowrap active:scale-[0.98] min-h-[38px] ${
                   isSelected
@@ -570,6 +619,9 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
           </div>
 
           <div className="flex items-center justify-between sm:justify-end gap-2 text-xs font-mono text-zinc-400 bg-white/[0.03] px-2.5 py-1.5 rounded-xl border border-white/[0.06]">
+            <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/25 text-[10px] font-bold shrink-0">
+              Slot #{currentCandidateIndex + 1}/{candidates.length}
+            </span>
             <span>{wordCount} words</span>
             {currentCandidate.fileName && (
               <span className="truncate max-w-[130px] text-zinc-300 font-sans" title={currentCandidate.fileName}>

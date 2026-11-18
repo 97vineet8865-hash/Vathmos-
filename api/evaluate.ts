@@ -716,9 +716,22 @@ function sanitizeGeminiEvaluation(
     );
   }
 
-  const cons: string[] = Array.isArray(rawEval?.cons)
+  const resumeMetrics = String(resumeText || '').match(new RegExp(IMPACT_METRIC_RE.source, 'gi')) || [];
+  const falseMetricClaimRe =
+    /\b(not\s+quantified|unquantified|could\s+be\s+(?:further\s+)?quantified|lacks?\s+(?:quantif\w*|metrics|throughput|concrete\s+numbers)|no\s+(?:quantif\w*|metrics|numbers|throughput)|missing\s+(?:quantif\w*|metrics))\b/i;
+
+  const rawCons: string[] = Array.isArray(rawEval?.cons)
     ? rawEval.cons.map((c: any) => String(c || '').trim()).filter(Boolean).slice(0, 3)
     : [];
+  const cons: string[] = rawCons.map((conText) => {
+    if (resumeMetrics.length >= 2 && falseMetricClaimRe.test(conText)) {
+      if (missingRaw.length > 0) {
+        return `Requires targeted verification on JD gaps not evidenced in work history (${missingRaw.slice(0, 2).join(', ')}).`;
+      }
+      return `Verify direct individual ownership behind reported production metrics (${resumeMetrics.slice(0, 2).join(', ')}) during interview.`;
+    }
+    return conText;
+  });
   while (cons.length < 3) {
     cons.push(
       cons.length === 0 && missingRaw.length > 0
@@ -728,8 +741,12 @@ function sanitizeGeminiEvaluation(
   }
 
   const rawName = String(rawEval?.candidate_name || '').trim();
+  const isGenericRawName = !rawName || ['unknown', 'candidate name', 'n/a', 'none', 'candidate'].includes(rawName.toLowerCase());
+  const isGenericInputName = !candidateName || /^candidate(\s*\d+|\s*\(\d+\))?$/i.test(String(candidateName).trim());
   const resolvedName =
-    !rawName || ['unknown', 'candidate name', 'n/a', 'none'].includes(rawName.toLowerCase())
+    !isGenericInputName && candidateName
+      ? String(candidateName).trim()
+      : isGenericRawName
       ? String(candidateName || '').trim() || 'Candidate'
       : rawName;
 
@@ -878,6 +895,26 @@ function decodeJwtTier(req: any): string | null {
   }
 }
 
+const EVAL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const evalResultCache = new Map<string, { result: any; cachedAt: number }>();
+
+function buildEvalCacheKey(jd: string, resume: string, mode: string): string {
+  const norm = (s: string) =>
+    String(s || '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  const combined = `${norm(jd)}||${norm(resume)}||${norm(mode)}`;
+  let hash1 = 2166136261;
+  let hash2 = 5381;
+  for (let i = 0; i < combined.length; i++) {
+    const c = combined.charCodeAt(i);
+    hash1 = Math.imul(hash1 ^ c, 16777619);
+    hash2 = (Math.imul(hash2, 33) ^ c) >>> 0;
+  }
+  return `${(hash1 >>> 0).toString(36)}-${hash2.toString(36)}-${combined.length}`;
+}
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -897,6 +934,20 @@ export default async function handler(req: any, res: any) {
 
     const tokenTier = decodeJwtTier(req);
     const effectiveMode = tokenTier === 'starter' ? 'standard' : String(strictnessMode || 'standard');
+
+    const cacheKey = buildEvalCacheKey(jobDescription, resumeText, effectiveMode);
+    const cachedEntry = evalResultCache.get(cacheKey);
+    if (cachedEntry && Date.now() - cachedEntry.cachedAt < EVAL_CACHE_TTL_MS) {
+      const sanitizedCached = sanitizeGeminiEvaluation(
+        cachedEntry.result,
+        jobDescription,
+        resumeText,
+        candidateName,
+        effectiveMode
+      );
+      return res.status(200).json(sanitizedCached);
+    }
+
     const domainCtx = detectRoleDomain(jobDescription);
     const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_SECURE || '';
 
@@ -924,7 +975,8 @@ CRITICAL RULES:
 2. ZERO FABRICATION ("NO UTER JUTER"): Every string in key_quotes and verifiable_evidence MUST be copied VERBATIM character-for-character from a work achievement, responsibility, or metric line in the Candidate Resume Text.
 3. FORBIDDEN QUOTE TYPES: NEVER put email addresses, phone numbers, URLs, home addresses, section headers alone ("SKILLS", "EXPERIENCE"), skill-tag lists, date-of-birth, or "I hereby declare" boilerplate in key_quotes or verifiable_evidence.
 4. CROSS-DOMAIN MISMATCH RULE: If the candidate comes from a completely unrelated profession with little or no overlap against the JD's core requirements, cap their total score below 45 and set recommendation to "Unqualified".
-5. EXACT ARITHMETIC: score = score_breakdown.total = hard_requirements (0-40) + domain_depth (0-30) + verifiable_evidence (0-30). Use granular non-rounded scores (e.g., 73, 81, 64).`;
+5. EXACT ARITHMETIC: score = score_breakdown.total = hard_requirements (0-40) + domain_depth (0-30) + verifiable_evidence (0-30). Use granular non-rounded scores (e.g., 73, 81, 64).
+6. ANTI-HALLUCINATION STRICT FACT-CHECK: Before writing any item in cons or missing_skills, verify it against the Candidate Resume Text and JD. NEVER claim outcomes are "unquantified", "could be further quantified", or "lack throughput impact" if concrete metrics (%, x, users, requests/min, revenue, latency) already exist in the resume. NEVER invent unrequested frameworks (e.g., GraphQL) or unsupported claims not grounded in the JD and resume.`;
 
       const prompt = `${calibrationNote}
 
@@ -938,26 +990,31 @@ ${String(jobDescription).slice(0, 4500)}
 CANDIDATE RESUME TEXT:
 ${String(resumeText).slice(0, 6500)}`;
 
-      const modelConfigs: Array<{ model: string; thinkingLevel: ThinkingLevel; timeoutMs: number }> = [
-        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW, timeoutMs: 5200 },
-        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL, timeoutMs: 3200 },
+      const modelConfigs: Array<{ model: string; thinkingLevel: ThinkingLevel; timeoutMs: number; useZeroTemp: boolean }> = [
+        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW, timeoutMs: 10500, useZeroTemp: false },
+        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL, timeoutMs: 6000, useZeroTemp: true },
       ];
 
       for (const cfg of modelConfigs) {
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), cfg.timeoutMs);
         try {
+          const config: any = {
+            systemInstruction,
+            seed: 42,
+            responseMimeType: 'application/json',
+            responseSchema: candidateEvaluationSchema,
+            thinkingConfig: { thinkingLevel: cfg.thinkingLevel },
+            abortSignal: ac.signal,
+          };
+          if (cfg.useZeroTemp) {
+            config.temperature = 0;
+          }
+
           const response = await ai.models.generateContent({
             model: cfg.model,
             contents: prompt,
-            config: {
-              systemInstruction,
-              seed: 42,
-              responseMimeType: 'application/json',
-              responseSchema: candidateEvaluationSchema,
-              thinkingConfig: { thinkingLevel: cfg.thinkingLevel },
-              abortSignal: ac.signal,
-            },
+            config,
           });
           clearTimeout(timer);
 
@@ -975,6 +1032,11 @@ ${String(resumeText).slice(0, 6500)}`;
             candidateName,
             effectiveMode
           );
+          if (evalResultCache.size >= 500) {
+            const oldestKey = evalResultCache.keys().next().value;
+            if (oldestKey) evalResultCache.delete(oldestKey);
+          }
+          evalResultCache.set(cacheKey, { result: verified, cachedAt: Date.now() });
           return res.status(200).json(verified);
         } catch (err: any) {
           clearTimeout(timer);
@@ -985,6 +1047,11 @@ ${String(resumeText).slice(0, 6500)}`;
 
     // Deterministic Multi-Domain Engine fallback (when GEMINI_API_KEY is unset or upstream throttles)
     const fallbackResult = heuristicFallbackEvaluate(jobDescription, resumeText, candidateName, effectiveMode);
+    if (evalResultCache.size >= 500) {
+      const oldestKey = evalResultCache.keys().next().value;
+      if (oldestKey) evalResultCache.delete(oldestKey);
+    }
+    evalResultCache.set(cacheKey, { result: fallbackResult, cachedAt: Date.now() });
     return res.status(200).json(fallbackResult);
   } catch (err: any) {
     console.error('api/evaluate fatal error:', err);

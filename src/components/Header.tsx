@@ -101,10 +101,10 @@ export const Header: React.FC<HeaderProps> = ({
               id="header-legal-charter-btn"
               onClick={onOpenLegalModal}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 transition-all cursor-pointer shadow-2xs"
-              title="View In-RAM Ephemeral Processing, GDPR & EEOC Compliance Charter"
+              title="View In-RAM Ephemeral Processing, Privacy & Fair Evaluation Charter"
             >
               <Shield className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Legal & Privacy</span>
+              <span className="hidden sm:inline">Privacy &amp; Safeguards</span>
             </button>
           )}
 
