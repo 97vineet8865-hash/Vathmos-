@@ -8,6 +8,7 @@ import {
   validatePasswordStrength,
 } from '../utils/authSecurity';
 import { dispatchVerificationOtp } from '../utils/emailService';
+import { supabase } from '../lib/supabaseClient';
 
 export interface DispatchedCodeNotification {
   email: string;
@@ -52,6 +53,9 @@ interface AuthContextType {
   recordEvaluationUsed: (count?: number) => void;
   recordInterviewQuestionUsed: (count?: number) => void;
   signOut: () => void;
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  oauthError: string | null;
+  clearOauthError: () => void;
   isAuthModalOpen: boolean;
   authModalMode: 'signin' | 'signup' | 'verify' | 'forgot';
   openAuthModal: (mode?: 'signin' | 'signup' | 'verify' | 'forgot') => void;
@@ -173,8 +177,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
   const [dispatchedNotification, setDispatchedNotification] =
     useState<DispatchedCodeNotification | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
-  // Validate and sync server session on mount
+  // Validate and sync server session on mount + handle Google OAuth redirect return
   useEffect(() => {
     const syncServerSession = async () => {
       const savedToken = localStorage.getItem(TOKEN_KEY);
@@ -207,6 +212,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     syncServerSession();
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const urlError =
+      params.get('error_description') ||
+      hashParams.get('error_description') ||
+      params.get('error') ||
+      hashParams.get('error');
+
+    if (urlError) {
+      setOauthError(decodeURIComponent(urlError));
+      setIsAuthModalOpen(true);
+      try {
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch {}
+    }
+
+    let isExchanging = false;
+
+    const exchangeGoogleSession = async (accessToken: string) => {
+      if (!accessToken || isExchanging) return;
+      isExchanging = true;
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessToken }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.success && data?.token && data?.user) {
+          setToken(data.token);
+          setCurrentUser(data.user as UserProfile);
+          try {
+            localStorage.setItem(TOKEN_KEY, data.token);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
+          } catch {}
+          setOauthError(null);
+          setIsAuthModalOpen(false);
+          setDispatchedNotification(null);
+          try {
+            if (window.location.search.includes('code=') || window.location.hash.includes('access_token=')) {
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          } catch {}
+        } else {
+          setOauthError(data?.error || 'Could not complete Google sign-in.');
+          setIsAuthModalOpen(true);
+        }
+      } catch (err: any) {
+        setOauthError(err?.message || 'Network error during Google sign-in.');
+        setIsAuthModalOpen(true);
+      } finally {
+        isExchanging = false;
+      }
+    };
+
+    const hasOAuthCallback =
+      window.location.search.includes('code=') || window.location.hash.includes('access_token=');
+
+    if (hasOAuthCallback) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data?.session?.access_token) {
+          exchangeGoogleSession(data.session.access_token);
+        }
+      });
+    }
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.access_token) {
+        const existingToken = localStorage.getItem(TOKEN_KEY);
+        if (!existingToken || event === 'SIGNED_IN') {
+          exchangeGoogleSession(session.access_token);
+        }
+      }
+    });
+
+    return () => {
+      listener?.subscription?.unsubscribe();
+    };
   }, []);
 
   // Automatically trigger onboarding plan modal if a logged-in user hasn't seen it yet
@@ -672,6 +760,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {}
   };
 
+  const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    if (!supabase) {
+      return { success: false, error: 'Google sign-in client is not initialized.' };
+    }
+    setOauthError(null);
+    try {
+      const redirectTarget = `${window.location.origin}${window.location.pathname}`;
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectTarget,
+          queryParams: { prompt: 'select_account' },
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) {
+        return { success: false, error: error.message || 'Could not start Google sign-in.' };
+      }
+      if (data?.url) {
+        if (window.self !== window.top && window.top) {
+          try {
+            window.top.location.assign(data.url);
+            return { success: true };
+          } catch {
+            // Fall through to current frame navigation if cross-origin top access is blocked
+          }
+        }
+        window.location.assign(data.url);
+        return { success: true };
+      }
+      return { success: false, error: 'No Google authentication URL was returned.' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Google sign-in error.' };
+    }
+  };
+
+  const clearOauthError = () => {
+    setOauthError(null);
+  };
+
   const signOut = () => {
     setToken(null);
     setCurrentUser(null);
@@ -679,6 +807,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(STORAGE_KEY);
     } catch {}
+    supabase?.auth.signOut().catch(() => {});
     setIsProfileModalOpen(false);
     setIsOnboardingModalOpen(false);
     setDispatchedNotification(null);
@@ -725,6 +854,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         recordEvaluationUsed,
         recordInterviewQuestionUsed,
         signOut,
+        signInWithGoogle,
+        oauthError,
+        clearOauthError,
         isAuthModalOpen,
         authModalMode,
         openAuthModal,

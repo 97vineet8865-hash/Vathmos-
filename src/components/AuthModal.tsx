@@ -32,6 +32,9 @@ export const AuthModal: React.FC = () => {
     resendVerificationCode,
     requestPasswordReset,
     resetPassword,
+    signInWithGoogle,
+    oauthError,
+    clearOauthError,
     dispatchedNotification,
     dismissDispatchedNotification,
   } = useAuth();
@@ -49,14 +52,32 @@ export const AuthModal: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [resetStep, setResetStep] = useState<'request' | 'confirm'>('request');
 
   // Sync mode when openAuthModal triggers with specific mode
   useEffect(() => {
     setMode(authModalMode);
+    setError(oauthError || null);
+    setSuccessMsg(null);
+  }, [authModalMode, isAuthModalOpen, oauthError]);
+
+  const handleGoogleSignIn = async () => {
     setError(null);
     setSuccessMsg(null);
-  }, [authModalMode, isAuthModalOpen]);
+    clearOauthError();
+    setIsGoogleLoading(true);
+    try {
+      const res = await signInWithGoogle();
+      if (!res.success && res.error) {
+        setError(res.error);
+        setIsGoogleLoading(false);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Could not start Google sign-in.');
+      setIsGoogleLoading(false);
+    }
+  };
 
   if (!isAuthModalOpen) return null;
 
@@ -308,11 +329,8 @@ export const AuthModal: React.FC = () => {
               {mode === 'forgot' && 'Reset Account Password'}
             </h2>
             <p className="text-xs text-zinc-400">
-              {mode === 'signup' &&
-                (IS_PUBLIC_BETA
-                  ? 'Public Beta: instant workspace activation (domain-checked)'
-                  : 'Real password security with email verification')}
-              {mode === 'signin' && 'Enter your registered credentials to access screening'}
+              {mode === 'signup' && '1-click Google sign-in or domain-verified email'}
+              {mode === 'signin' && 'Sign in with Google or your registered credentials'}
               {mode === 'verify' && 'Confirm email ownership with 6-digit security code'}
               {mode === 'forgot' && 'Verify your email to create a new password'}
             </p>
@@ -367,6 +385,55 @@ export const AuthModal: React.FC = () => {
           <div className="mb-4 px-3.5 py-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <span className="leading-relaxed">{successMsg}</span>
+          </div>
+        )}
+
+        {/* 1-Click Continue with Google (Sign In & Sign Up) */}
+        {(mode === 'signin' || mode === 'signup') && (
+          <div className="mb-4 space-y-3">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={isLoading || isGoogleLoading}
+              className="w-full py-2.5 px-4 bg-white hover:bg-zinc-100 text-zinc-900 font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98] disabled:opacity-60"
+            >
+              {isGoogleLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-zinc-700" />
+                  <span>Connecting to Google...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.3 0 6.08-1.09 8.1-2.96l-3.88-3.05c-1.1.74-2.51 1.18-4.22 1.18-3.25 0-6-2.19-6.98-5.15H1.01v3.14C3.05 21.21 7.21 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.02 14.02A7.2 7.2 0 0 1 4.64 12c0-.7.13-1.38.38-2.02V6.84H1.01A11.98 11.98 0 0 0 0 12c0 1.94.46 3.77 1.01 5.16l4.01-3.14z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.83c1.8 0 3.41.62 4.68 1.84l3.51-3.51C18.07 1.19 15.29 0 12 0 7.21 0 3.05 2.79 1.01 6.84l4.01 3.14c.98-2.96 3.73-5.15 6.98-5.15z"
+                    />
+                  </svg>
+                  <span>Continue with Google</span>
+                </>
+              )}
+            </button>
+
+            <div className="relative flex items-center justify-center">
+              <div className="border-t border-white/[0.08] w-full" />
+              <span className="px-2.5 text-[10px] uppercase tracking-wider text-zinc-500 bg-[#12151E] shrink-0">
+                or use email
+              </span>
+              <div className="border-t border-white/[0.08] w-full" />
+            </div>
           </div>
         )}
 
@@ -485,9 +552,7 @@ export const AuthModal: React.FC = () => {
                 />
               </div>
               <p className="text-[10px] text-zinc-500 mt-1">
-                {IS_PUBLIC_BETA
-                  ? 'Public Beta: instant activation — disposable & fake domains are automatically blocked.'
-                  : 'A 6-digit confirmation code will be required to verify this address.'}
+                Disposable &amp; fake domains are blocked; verified by OTP or Google login.
               </p>
             </div>
 
@@ -615,7 +680,7 @@ export const AuthModal: React.FC = () => {
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
-                  <span>{IS_PUBLIC_BETA ? 'Create Free Beta Account' : 'Create & Verify Email'}</span>
+                  <span>{IS_PUBLIC_BETA ? 'Create Free Account' : 'Create & Verify Email'}</span>
                 </>
               )}
             </button>

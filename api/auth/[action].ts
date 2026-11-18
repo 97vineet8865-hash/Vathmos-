@@ -788,6 +788,85 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // 8. GOOGLE OAUTH EXCHANGE (Verifies Supabase OAuth accessToken server-side)
+    if (action === 'google' && req.method === 'POST') {
+      const accessToken = String(req.body?.accessToken || '').trim();
+      if (!accessToken) {
+        return res.status(400).json({ error: 'Missing Google OAuth access token.' });
+      }
+
+      const supaUserResp = await fetch(`${url}/auth/v1/user`, {
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!supaUserResp.ok) {
+        return res.status(401).json({ error: 'Google session verification failed. Please try signing in again.' });
+      }
+
+      const googleUser: any = await supaUserResp.json().catch(() => null);
+      const cleanEmail = String(googleUser?.email || '').trim().toLowerCase();
+      if (!googleUser?.id || !cleanEmail || !cleanEmail.includes('@')) {
+        return res.status(400).json({ error: 'Google account did not provide a valid email address.' });
+      }
+
+      const { authUser, workspace } = await findSupabaseUserByEmail(url, secretKey, cleanEmail);
+      const gMeta = googleUser.user_metadata || {};
+      const existingMeta = authUser?.user_metadata || {};
+      const isFounderAdmin = ADMIN_EMAILS.includes(cleanEmail);
+      const defaultTier = workspace?.tier || existingMeta.tier || (isFounderAdmin ? 'agency' : 'free');
+      const defaultLimits = TIER_LIMITS[defaultTier] || TIER_LIMITS.free;
+
+      const mergedMeta = {
+        ...existingMeta,
+        name: existingMeta.name || workspace?.full_name || gMeta.full_name || gMeta.name || cleanEmail.split('@')[0],
+        companyName: existingMeta.companyName || workspace?.company_name || 'Hiring Organization',
+        role: existingMeta.role || workspace?.role_title || 'Talent Acquisition',
+        avatarColor: existingMeta.avatarColor || (isFounderAdmin ? '#10B981' : '#0EA5E9'),
+        isEmailVerified: true,
+        authProvider: 'google',
+        tier: defaultTier,
+        evaluationsLimit: existingMeta.evaluationsLimit ?? defaultLimits.evaluations,
+        evaluationsUsed: existingMeta.evaluationsUsed ?? 0,
+        interviewQuestionsLimit: existingMeta.interviewQuestionsLimit ?? defaultLimits.interviewQuestions,
+        interviewQuestionsUsed: existingMeta.interviewQuestionsUsed ?? 0,
+      };
+
+      const targetAuthId = authUser?.id || googleUser.id;
+      await fetch(`${url}/auth/v1/admin/users/${encodeURIComponent(targetAuthId)}`, {
+        method: 'PUT',
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email_confirm: true,
+          user_metadata: mergedMeta,
+        }),
+      }).catch(() => {});
+
+      const safeUser = buildSafeUser(
+        { ...(authUser || googleUser), id: targetAuthId, email: cleanEmail, user_metadata: mergedMeta },
+        workspace
+      );
+      await upsertWorkspaceRow(url, secretKey, safeUser);
+
+      const token = signSessionToken(
+        {
+          userId: safeUser.id,
+          email: safeUser.email,
+          role: safeUser.role,
+          tier: safeUser.tier,
+        },
+        sessionSecret
+      );
+
+      return res.status(200).json({ success: true, token, user: safeUser });
+    }
+
     return res.status(404).json({ error: `Unknown auth action: ${action}` });
   } catch (err: any) {
     return res.status(500).json({

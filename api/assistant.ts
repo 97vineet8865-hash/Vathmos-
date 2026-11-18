@@ -189,8 +189,9 @@ ${JSON.stringify(action, null, 2)}
 
   // 5. Draft rejection letter
   if (msgLower.includes('reject') || msgLower.includes('declined') || msgLower.includes('pass') || msgLower.includes('not selected')) {
-    const rejectCand = sortedCandidates.length > 1 ? sortedCandidates[sortedCandidates.length - 1].name : topCand;
-    const rejectEmail = specifiedEmail || fallbackAddr;
+    const rejectCandObj = sortedCandidates.length > 1 ? sortedCandidates[sortedCandidates.length - 1] : targetCandObj;
+    const rejectCand = rejectCandObj ? rejectCandObj.name : topCand;
+    const rejectEmail = specifiedEmail || rejectCandObj?.email || fallbackAddr;
     const action = {
       type: 'rejection',
       candidateName: rejectCand,
@@ -261,7 +262,7 @@ export default async function handler(req: any, res: any) {
 RULES:
 - Adapt strictly to the actual role (${roleTitle}). Never say "Engineering Team" or "technical round" unless the JD is engineering/technical.
 - Never invent candidate metrics or quotes not in the summary.
-- When asked to draft/send an interview invite, rejection, or forward an email, ALWAYS include a \`\`\`vathmos_email_action JSON block with type ("interview_invite"|"rejection"), candidateName, candidateEmail, subject, body, and screeningQuestions, and remind the recruiter that nothing sends without clicking Approve & Send.
+- When asked to draft/send an interview invite, rejection, or forward an email, ALWAYS include a \`\`\`vathmos_email_action JSON block with type ("interview_invite"|"rejection"), candidateName, candidateEmail (prefer email from CANDIDATES SUMMARY or recruiter-specified address), subject, body, and screeningQuestions, and remind the recruiter that nothing sends without clicking Approve & Send.
 ${contextBlock}`;
 
       for (const cfg of [

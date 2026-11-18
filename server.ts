@@ -845,6 +845,97 @@ app.get('/api/auth/session', (req, res) => {
   }
 });
 
+// 7b. Google OAuth Exchange Route
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const accessToken = String(req.body?.accessToken || '').trim();
+    if (!accessToken) {
+      return res.status(400).json({ error: 'Missing Google OAuth access token.' });
+    }
+
+    const supaUrl = (
+      process.env.SUPABASE_URL ||
+      process.env.VITE_SUPABASE_URL ||
+      'https://vzekrvpgxyjjnmkfwgot.supabase.co'
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    const supaKey = (
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      'sb_publishable_2Q9oAS24CQnSgAWvdgyk6w_cSA2yDrr'
+    ).trim();
+
+    const supaResp = await fetch(`${supaUrl}/auth/v1/user`, {
+      headers: {
+        apikey: supaKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!supaResp.ok) {
+      return res.status(401).json({ error: 'Google session verification failed.' });
+    }
+
+    const googleUser: any = await supaResp.json().catch(() => null);
+    const cleanEmail = String(googleUser?.email || '').trim().toLowerCase();
+    if (!googleUser?.id || !cleanEmail || !cleanEmail.includes('@')) {
+      return res.status(400).json({ error: 'Google account did not return an email address.' });
+    }
+
+    const gMeta = googleUser.user_metadata || {};
+    const isAdmin = ADMIN_EMAILS.includes(cleanEmail);
+    const users = getStoredUsers();
+    let user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+    if (!user) {
+      const tier = isAdmin ? 'agency' : 'free';
+      const limits = TIER_LIMITS[tier];
+      user = {
+        id: googleUser.id || `usr-${Date.now()}`,
+        name: gMeta.full_name || gMeta.name || cleanEmail.split('@')[0],
+        email: cleanEmail,
+        companyName: 'Hiring Organization',
+        role: isAdmin ? 'Founder & Lead Engineer' : 'Talent Acquisition',
+        avatarColor: isAdmin ? '#10B981' : '#0EA5E9',
+        salt: crypto.randomBytes(16).toString('hex'),
+        passwordHash: crypto.randomBytes(32).toString('hex'),
+        isEmailVerified: true,
+        tier,
+        evaluationsLimit: limits.evaluations,
+        evaluationsUsed: 0,
+        interviewQuestionsLimit: limits.interviewQuestions,
+        interviewQuestionsUsed: 0,
+        createdAt: new Date().toISOString(),
+      };
+      users.push(user);
+      saveStoredUsers(users);
+    } else if (!user.isEmailVerified) {
+      user.isEmailVerified = true;
+      user.verificationCode = undefined;
+      user.verificationCodeExpires = undefined;
+      saveStoredUsers(users);
+    }
+
+    const token = signSessionToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      tier: user.tier,
+    });
+
+    return res.json({
+      success: true,
+      token,
+      user: sanitizeUser(user),
+    });
+  } catch (err: any) {
+    console.error('Google auth exchange error:', err);
+    return res.status(500).json({ error: 'Google authentication failed.' });
+  }
+});
+
 // 8. Subscription Upgrade Route (Enforces verified tier upgrade on server)
 app.post('/api/subscription/upgrade', (req, res) => {
   try {
@@ -2040,8 +2131,16 @@ ${JSON.stringify(
     msgLower.includes('pass') ||
     msgLower.includes('rejection letter')
   ) {
-    const candName = candidatesSummary && candidatesSummary.length > 1 ? candidatesSummary[candidatesSummary.length - 1].name : (candidatesSummary && candidatesSummary[0] ? candidatesSummary[0].name : 'Candidate');
-    const candEmail = `${candName.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`;
+    const rejectCandObj =
+      candidatesSummary && candidatesSummary.length > 1
+        ? candidatesSummary[candidatesSummary.length - 1]
+        : candidatesSummary && candidatesSummary[0]
+        ? candidatesSummary[0]
+        : null;
+    const candName = rejectCandObj?.name || 'Candidate';
+    const candEmail =
+      rejectCandObj?.email ||
+      `${candName.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`;
 
     return `I have prepared a respectful, constructive rejection update for **${candName}**.
 
@@ -2141,7 +2240,7 @@ TONE & BEHAVIOR:
 - Adapt strictly to the actual role (${domainCtx.roleTitle}). Never say "Engineering Team" or "technical round" unless the JD is actually technical.
 - Speak in a natural, highly human conversational tone. Avoid robotic clichés.
 - When asked "Who should I hire?" or to compare candidates, explain who leads on verified outcomes, role depth, and honest trade-offs.
-- EMAIL DRAFTING & SENDING: Never claim an email is sent automatically—always remind the recruiter to click "Approve & Send Email", and output a \`\`\`vathmos_email_action JSON block.
+- EMAIL DRAFTING & SENDING: Never claim an email is sent automatically—always remind the recruiter to click "Approve & Send Email", and output a \`\`\`vathmos_email_action JSON block using the candidate's email from CURRENT EVALUATED CANDIDATES SUMMARY (or the recruiter-specified email) as candidateEmail.
 
 ${workspaceContext}`;
 

@@ -515,8 +515,12 @@ ${JSON.stringify(
 
     // 4. Rejection letter with human-in-the-loop action
     if (q.includes('reject') || q.includes('declined') || q.includes('pass') || q.includes('not selected')) {
-      const rejectCand = sortedCandidates.length > 1 ? sortedCandidates[sortedCandidates.length - 1].name : topCand;
-      const rejectEmail = `${rejectCand.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`;
+      const rejectCandObj = sortedCandidates.length > 1 ? sortedCandidates[sortedCandidates.length - 1] : targetCandObj;
+      const rejectCand = rejectCandObj ? rejectCandObj.name : topCand;
+      const rejectEmail =
+        userSpecifiedEmail ||
+        rejectCandObj?.email ||
+        `${rejectCand.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`;
 
       return `I have prepared a polite, constructive candidate update for **${rejectCand}**.
 
@@ -687,16 +691,20 @@ How can I assist your hiring decision right now?`;
     setCopilotQuery('');
     setCopilotLoading(true);
 
-    const candidatesSummary = completedCandidates.map((c) => ({
-      name: c.name,
-      score: c.result?.score,
-      recommendation: c.result?.recommendation,
-      matched_skills: c.result?.matched_skills,
-      missing_skills: c.result?.missing_skills,
-      pros: c.result?.pros,
-      cons: c.result?.cons,
-      rank_reasoning: c.result?.rank_reasoning,
-    }));
+    const candidatesSummary = completedCandidates.map((c) => {
+      const emailMatch = String(c.resumeText || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      return {
+        name: c.name,
+        email: emailMatch ? emailMatch[0].toLowerCase() : undefined,
+        score: c.result?.score,
+        recommendation: c.result?.recommendation,
+        matched_skills: c.result?.matched_skills,
+        missing_skills: c.result?.missing_skills,
+        pros: c.result?.pros,
+        cons: c.result?.cons,
+        rank_reasoning: c.result?.rank_reasoning,
+      };
+    });
 
     try {
       let replyText = '';
