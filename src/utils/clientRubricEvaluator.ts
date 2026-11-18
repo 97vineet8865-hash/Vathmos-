@@ -736,16 +736,52 @@ export function sanitizeEvaluationResult(
   else if (total >= 50) recommendation = 'Marginal / Borderline';
   else recommendation = 'Unqualified';
 
-  // Deduplicate matched vs missing skills
   const matchedRaw: string[] = Array.isArray(rawEval?.matched_skills)
     ? rawEval.matched_skills.map((s: any) => String(s || '').trim()).filter(Boolean)
     : [];
-  const matchedSet = new Set(matchedRaw.map((s) => s.toLowerCase()));
+  const jdLowerCheck = String(jobDescription || '').toLowerCase();
+  const resumeLowerCheck = safeResume.toLowerCase();
+  const SKILL_ALIASES: Record<string, string[]> = {
+    aws: ['aws', 'amazon web services', 'ec2', 's3', 'lambda', 'rds'],
+    kubernetes: ['kubernetes', 'k8s'],
+    docker: ['docker', 'container'],
+    postgresql: ['postgres', 'postgresql', 'sql'],
+    sql: ['sql', 'postgres', 'postgresql', 'mysql'],
+    nosql: ['nosql', 'mongodb', 'mongo', 'redis', 'dynamodb', 'cassandra'],
+    'ci/cd': ['ci/cd', 'ci-cd', 'cicd', 'jenkins', 'github actions', 'gitlab ci'],
+    go: ['go', 'golang'],
+    golang: ['go', 'golang'],
+    'node.js': ['node.js', 'nodejs', 'node'],
+    react: ['react', 'react.js', 'reactjs'],
+    rest: ['rest', 'restful'],
+  };
+
+  const hasSkillEvidence = (skillLabel: string, haystack: string): boolean => {
+    const clean = skillLabel.toLowerCase().trim();
+    if (!clean) return false;
+    if (haystack.includes(clean)) return true;
+    const tokens = clean
+      .split(/[^a-z0-9+#.]+/)
+      .filter((t) => t.length >= 2 && !['and', 'or', 'for', 'the', 'with', 'experience', 'in', 'of'].includes(t));
+    if (tokens.length === 0) return false;
+    return tokens.some((tok) => {
+      if (haystack.includes(tok)) return true;
+      const aliases = SKILL_ALIASES[tok];
+      return aliases ? aliases.some((a) => haystack.includes(a)) : false;
+    });
+  };
+
+  const verifiedMatched = matchedRaw.filter((s) => hasSkillEvidence(s, resumeLowerCheck));
+  const matchedSet = new Set(verifiedMatched.map((s) => s.toLowerCase()));
 
   const missingRaw: string[] = Array.isArray(rawEval?.missing_skills)
     ? rawEval.missing_skills
         .map((s: any) => String(s || '').trim())
-        .filter((s: string) => Boolean(s) && !matchedSet.has(s.toLowerCase()))
+        .filter((s: string) => {
+          if (!s || matchedSet.has(s.toLowerCase())) return false;
+          // Reject unrequested missing skills unless JD actually mentions them or a core token
+          return hasSkillEvidence(s, jdLowerCheck);
+        })
     : [];
 
   // Programmatically verify & sanitize all quotes against actual resume text
@@ -810,8 +846,8 @@ export function sanitizeEvaluationResult(
       verifiable_evidence: verifiableEv,
       total,
     },
-    matched_skills: Array.from(new Set(matchedRaw)).slice(0, 10),
-    missing_skills: Array.from(new Set(missingRaw)).slice(0, 8),
+    matched_skills: Array.from(new Set(verifiedMatched)).slice(0, 25),
+    missing_skills: Array.from(new Set(missingRaw)).slice(0, 15),
     pros,
     cons,
     rank_reasoning:
@@ -1086,8 +1122,8 @@ export function evaluateWithHeuristicRubric(
       verifiable_evidence: evidenceScore,
       total: totalScore,
     },
-    matched_skills: matched_skills.slice(0, 8),
-    missing_skills: missing_skills.slice(0, 6),
+    matched_skills: matched_skills.slice(0, 25),
+    missing_skills: missing_skills.slice(0, 15),
     pros,
     cons,
     rank_reasoning,

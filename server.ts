@@ -1711,7 +1711,8 @@ CRITICAL RULES:
 3. FORBIDDEN QUOTE TYPES: NEVER put email addresses, phone numbers, URLs, home addresses, section headers alone, skill-tag lists, DOB, or "I hereby declare" boilerplate in key_quotes or verifiable_evidence.
 4. CROSS-DOMAIN MISMATCH RULE: If the candidate comes from an unrelated occupation with minimal overlap against the JD's core requirements, cap their total score below 45 and set recommendation to "Unqualified".
 5. EXACT ARITHMETIC: score = score_breakdown.total = hard_requirements (0-40) + domain_depth (0-30) + verifiable_evidence (0-30). Use granular non-rounded scores.
-6. ANTI-HALLUCINATION STRICT FACT-CHECK: Before writing any item in cons or missing_skills, verify it against the Candidate Resume Text and JD. NEVER claim outcomes are "unquantified", "could be further quantified", or "lack throughput impact" if concrete metrics (%, x, users, requests/min, revenue, latency) already exist in the resume. NEVER invent unrequested frameworks (e.g., GraphQL) or unsupported claims not grounded in the JD and resume.`;
+6. ANTI-HALLUCINATION STRICT FACT-CHECK: Before writing any item in cons or missing_skills, verify it against the Candidate Resume Text and JD. NEVER claim outcomes are "unquantified", "could be further quantified", or "lack throughput impact" if concrete metrics (%, x, users, requests/min, revenue, latency) already exist in the resume. NEVER invent unrequested frameworks (e.g., GraphQL) or unsupported claims not grounded in the JD and resume.
+7. STRICT SKILL FIDELITY: List EVERY skill required by the JD that is verified in the resume inside matched_skills (do not drop skills, and NEVER add any skill to matched_skills unless it explicitly appears in the resume). For missing_skills, list ONLY requirements explicitly requested in the JD that are missing in the resume.`;
 
         const singlePrompt = `${calibrationNote}
 

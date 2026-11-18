@@ -501,14 +501,23 @@ const CANONICAL_SKILLS: SkillDef[] = [
   { name: 'JavaScript', domain: 'engineering', jdRegex: /\bjavascript\b|\bjs\b/i, resumeRegex: /\bjavascript\b|\bjs\b/i },
   { name: 'Node.js', domain: 'engineering', jdRegex: /\bnode\.?js\b/i, resumeRegex: /\bnode\.?js\b/i },
   { name: 'React', domain: 'engineering', jdRegex: /\breact(?:\.js)?\b(?!-native)/i, resumeRegex: /\breact(?:\.js)?\b(?!-native)/i },
+  { name: 'Next.js', domain: 'engineering', jdRegex: /\bnext\.?js\b/i, resumeRegex: /\bnext\.?js\b/i },
   { name: 'REST APIs', domain: 'engineering', jdRegex: /\brest\s*apis?\b|\brestful\b|\brest\b/i, resumeRegex: /\brest(?:ful)?(?:\s*apis?)?\b/i },
+  { name: 'GraphQL', domain: 'engineering', jdRegex: /\bgraphql\b/i, resumeRegex: /\bgraphql\b/i },
+  { name: 'gRPC', domain: 'engineering', jdRegex: /\bgrpc\b/i, resumeRegex: /\bgrpc\b/i },
   { name: 'Microservices', domain: 'engineering', jdRegex: /\bmicroservices?\b/i, resumeRegex: /\bmicroservices?\b/i },
   { name: 'Distributed Systems', domain: 'engineering', jdRegex: /\bdistributed(?:\s+systems?)?\b/i, resumeRegex: /\bdistributed(?:\s+systems?)?\b/i },
+  { name: 'Event-Driven Architecture', domain: 'engineering', jdRegex: /\bevent[- ]driven(?:\s+architecture)?\b/i, resumeRegex: /\bevent[- ]driven(?:\s+architecture)?\b/i },
   { name: 'SQL / Databases', domain: 'engineering', jdRegex: /\bsql\b|\bdatabases?\b/i, resumeRegex: /\bpostgres(?:ql)?\b|\bmysql\b|\bsql\b|\bmongodb?\b|\brds\b|\bsupabase\b/i },
+  { name: 'PostgreSQL', domain: 'engineering', jdRegex: /\bpostgres(?:ql)?\b/i, resumeRegex: /\bpostgres(?:ql)?\b/i },
+  { name: 'MongoDB', domain: 'engineering', jdRegex: /\bmongodb?\b/i, resumeRegex: /\bmongodb?\b/i },
+  { name: 'NoSQL', domain: 'engineering', jdRegex: /\bnosql\b/i, resumeRegex: /\bnosql\b|\bmongodb?\b|\bredis\b|\bdynamodb\b|\bcassandra\b/i },
+  { name: 'Redis', domain: 'engineering', jdRegex: /\bredis\b|\bcaching\b/i, resumeRegex: /\bredis\b|\bcaching\b/i },
+  { name: 'RabbitMQ / Kafka', domain: 'engineering', jdRegex: /\brabbitmq\b|\bkafka\b/i, resumeRegex: /\brabbitmq\b|\bkafka\b/i },
   { name: 'AWS', domain: 'engineering', jdRegex: /\baws\b|\bamazon\s+web\s+services\b/i, resumeRegex: /\baws\b|\bec2\b|\bs3\b|\blambda\b|\brds\b/i },
   { name: 'Docker', domain: 'engineering', jdRegex: /\bdocker\b|\bcontainers?\b/i, resumeRegex: /\bdocker\b|\bcontainers?\b/i },
   { name: 'Kubernetes', domain: 'engineering', jdRegex: /\bkubernetes\b|\bk8s\b/i, resumeRegex: /\bkubernetes\b|\bk8s\b/i },
-  { name: 'CI/CD', domain: 'engineering', jdRegex: /\bci[\/\-]cd\b/i, resumeRegex: /\bci[\/\-]cd\b|\bgithub\s+actions\b|\bjenkins\b/i },
+  { name: 'CI/CD', domain: 'engineering', jdRegex: /\bci[\/\-]cd\b|\bjenkins\b/i, resumeRegex: /\bci[\/\-]cd\b|\bgithub\s+actions\b|\bjenkins\b/i },
   { name: 'B2B Sales', domain: 'sales', jdRegex: /\bb2b\s+sales\b|\bb2b\b/i, resumeRegex: /\bb2b(?:\s+sales)?\b|\benterprise\s+sales\b/i },
   { name: 'Enterprise Sales', domain: 'sales', jdRegex: /\benterprise\s+sales\b|\benterprise\s+accounts?\b/i, resumeRegex: /\benterprise\s+sales\b|\benterprise\s+accounts?\b|\benterprise\s+clients?\b/i },
   { name: 'Lead Generation & Prospecting', domain: 'sales', jdRegex: /\blead\s+generation\b|\bprospecting\b|\boutbound\b|\bcold\s+calling\b/i, resumeRegex: /\blead\s+generation\b|\bprospecting\b|\boutbound\b|\bcold\s+call(?:ing|s)?\b/i },
@@ -633,8 +642,8 @@ function heuristicFallbackEvaluate(
       verifiable_evidence: evidenceScore,
       total: totalScore,
     },
-    matched_skills: matched_skills.slice(0, 8),
-    missing_skills: missing_skills.slice(0, 6),
+    matched_skills: matched_skills.slice(0, 25),
+    missing_skills: missing_skills.slice(0, 15),
     pros: [
       matched_skills.length > 0
         ? `Verified alignment on key ${domainCtx.domainLabel.toLowerCase()} requirements: ${matched_skills.slice(0, 4).join(', ')}.`
@@ -691,12 +700,47 @@ function sanitizeGeminiEvaluation(
   else if (total >= 50) recommendation = 'Marginal / Borderline';
   else recommendation = 'Unqualified';
 
-  const matchedRaw: string[] = Array.isArray(rawEval?.matched_skills)
+  const matchedRawInput: string[] = Array.isArray(rawEval?.matched_skills)
     ? rawEval.matched_skills.map((s: any) => String(s || '').trim()).filter(Boolean)
     : [];
+  const jdLowerCheck = String(jobDescription || '').toLowerCase();
+  const resumeLowerCheck = String(resumeText || '').toLowerCase();
+  const SKILL_ALIASES: Record<string, string[]> = {
+    aws: ['aws', 'amazon web services', 'ec2', 's3', 'lambda', 'rds'],
+    kubernetes: ['kubernetes', 'k8s'],
+    docker: ['docker', 'container'],
+    postgresql: ['postgres', 'postgresql', 'sql'],
+    sql: ['sql', 'postgres', 'postgresql', 'mysql'],
+    nosql: ['nosql', 'mongodb', 'mongo', 'redis', 'dynamodb', 'cassandra'],
+    'ci/cd': ['ci/cd', 'ci-cd', 'cicd', 'jenkins', 'github actions', 'gitlab ci'],
+    go: ['go', 'golang'],
+    golang: ['go', 'golang'],
+    'node.js': ['node.js', 'nodejs', 'node'],
+    react: ['react', 'react.js', 'reactjs'],
+    rest: ['rest', 'restful'],
+  };
+
+  const hasSkillEvidence = (skillLabel: string, haystack: string): boolean => {
+    const clean = skillLabel.toLowerCase().trim();
+    if (!clean) return false;
+    if (haystack.includes(clean)) return true;
+    const tokens = clean
+      .split(/[^a-z0-9+#.]+/)
+      .filter((t) => t.length >= 2 && !['and', 'or', 'for', 'the', 'with', 'experience', 'in', 'of'].includes(t));
+    if (tokens.length === 0) return false;
+    return tokens.some((tok) => {
+      if (haystack.includes(tok)) return true;
+      const aliases = SKILL_ALIASES[tok];
+      return aliases ? aliases.some((a) => haystack.includes(a)) : false;
+    });
+  };
+
+  const matchedRaw = matchedRawInput.filter((s) => hasSkillEvidence(s, resumeLowerCheck));
   const matchedSet = new Set(matchedRaw.map((s) => s.toLowerCase()));
   const missingRaw: string[] = Array.isArray(rawEval?.missing_skills)
-    ? rawEval.missing_skills.map((s: any) => String(s || '').trim()).filter((s: string) => Boolean(s) && !matchedSet.has(s.toLowerCase()))
+    ? rawEval.missing_skills
+        .map((s: any) => String(s || '').trim())
+        .filter((s: string) => Boolean(s) && !matchedSet.has(s.toLowerCase()) && hasSkillEvidence(s, jdLowerCheck))
     : [];
 
   const candidateQuotesInput = [
@@ -759,8 +803,8 @@ function sanitizeGeminiEvaluation(
       verifiable_evidence: verifiableEv,
       total,
     },
-    matched_skills: Array.from(new Set(matchedRaw)).slice(0, 10),
-    missing_skills: Array.from(new Set(missingRaw)).slice(0, 8),
+    matched_skills: Array.from(new Set(matchedRaw)).slice(0, 25),
+    missing_skills: Array.from(new Set(missingRaw)).slice(0, 15),
     pros,
     cons,
     rank_reasoning:
@@ -976,7 +1020,8 @@ CRITICAL RULES:
 3. FORBIDDEN QUOTE TYPES: NEVER put email addresses, phone numbers, URLs, home addresses, section headers alone ("SKILLS", "EXPERIENCE"), skill-tag lists, date-of-birth, or "I hereby declare" boilerplate in key_quotes or verifiable_evidence.
 4. CROSS-DOMAIN MISMATCH RULE: If the candidate comes from a completely unrelated profession with little or no overlap against the JD's core requirements, cap their total score below 45 and set recommendation to "Unqualified".
 5. EXACT ARITHMETIC: score = score_breakdown.total = hard_requirements (0-40) + domain_depth (0-30) + verifiable_evidence (0-30). Use granular non-rounded scores (e.g., 73, 81, 64).
-6. ANTI-HALLUCINATION STRICT FACT-CHECK: Before writing any item in cons or missing_skills, verify it against the Candidate Resume Text and JD. NEVER claim outcomes are "unquantified", "could be further quantified", or "lack throughput impact" if concrete metrics (%, x, users, requests/min, revenue, latency) already exist in the resume. NEVER invent unrequested frameworks (e.g., GraphQL) or unsupported claims not grounded in the JD and resume.`;
+6. ANTI-HALLUCINATION STRICT FACT-CHECK: Before writing any item in cons or missing_skills, verify it against the Candidate Resume Text and JD. NEVER claim outcomes are "unquantified", "could be further quantified", or "lack throughput impact" if concrete metrics (%, x, users, requests/min, revenue, latency) already exist in the resume. NEVER invent unrequested frameworks (e.g., GraphQL) or unsupported claims not grounded in the JD and resume.
+7. STRICT SKILL FIDELITY: List EVERY skill required by the JD that is verified in the resume inside matched_skills (do not truncate or drop skills, and NEVER add any skill to matched_skills unless it explicitly appears in the resume). For missing_skills, list ONLY requirements explicitly requested in the JD that are missing or unsubstantiated in the resume.`;
 
       const prompt = `${calibrationNote}
 
