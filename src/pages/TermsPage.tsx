@@ -1,6 +1,7 @@
 import React from 'react';
 import { FileText, Scale, CheckCircle2, AlertTriangle, ArrowLeft, ArrowUpRight, Zap, Shield, CreditCard, Mail } from 'lucide-react';
 import { Link, useRouter } from '../router/RouterContext';
+import { VathmosLogo } from '../components/VathmosLogo';
 
 export const TermsPage: React.FC = () => {
   const { navigate } = useRouter();
@@ -20,6 +21,7 @@ export const TermsPage: React.FC = () => {
             </button>
             <div className="h-4 w-px bg-slate-800" />
             <div className="flex items-center gap-2">
+              <VathmosLogo size="xs" />
               <span className="text-base font-bold tracking-tight text-white">Vathmos</span>
               <span className="text-xs text-slate-400">/ Terms of Service</span>
             </div>

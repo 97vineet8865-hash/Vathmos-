@@ -9,7 +9,7 @@
       "destination": "/api/auth/%5Baction%5D?action=:action"
     },
     {
-      "source": "/((?!api/|assets/).*)",
+      "source": "/((?!api/|assets/|sitemap\\.xml$|robots\\.txt$|favicon\\.svg$|logo\\.png$|og-image\\.png$).*)",
       "destination": "/index.html"
     }
   ]

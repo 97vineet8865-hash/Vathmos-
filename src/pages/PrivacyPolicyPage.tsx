@@ -2,6 +2,7 @@ import React from 'react';
 import { useRouter } from '../router/RouterContext';
 import { Shield, ArrowLeft, Mail, ArrowUpRight } from 'lucide-react';
 import { Link } from '../router/RouterContext';
+import { VathmosLogo } from '../components/VathmosLogo';
 
 export const PrivacyPolicyPage: React.FC = () => {
   const { navigate } = useRouter();
@@ -13,6 +14,7 @@ export const PrivacyPolicyPage: React.FC = () => {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5 text-white hover:text-cyan-400 transition">
             <ArrowLeft className="w-4 h-4" />
+            <VathmosLogo size="xs" />
             <span className="text-xs font-bold uppercase tracking-wider">Back to Vathmos</span>
           </Link>
 

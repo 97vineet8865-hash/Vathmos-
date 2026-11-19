@@ -113,7 +113,7 @@ export async function openRazorpayCheckout({
     currency: 'INR',
     name: 'Vathmos',
     description: `${tier.name} (${tier.evaluations} evaluations)`,
-    image: 'https://vathmos-vk.vercel.app/favicon.ico',
+    image: 'https://www.vathmos.co.in/logo.png',
     prefill: {
       email: customerEmail || 'vathmossupport@gmail.com',
       contact: customerPhone || '',

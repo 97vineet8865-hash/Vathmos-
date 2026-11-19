@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, MapPin, Clock, ShieldCheck, Send, CheckCircle2, AlertCircle, ArrowLeft, ArrowUpRight, MessageSquare, PhoneCall, Building2 } from 'lucide-react';
 import { Link, useRouter } from '../router/RouterContext';
+import { VathmosLogo } from '../components/VathmosLogo';
 
 export const ContactPage: React.FC = () => {
   const { navigate } = useRouter();
@@ -69,6 +70,7 @@ export const ContactPage: React.FC = () => {
             </button>
             <div className="h-4 w-px bg-slate-800" />
             <div className="flex items-center gap-2">
+              <VathmosLogo size="xs" />
               <span className="text-base font-bold tracking-tight text-white">Vathmos</span>
               <span className="text-xs text-slate-400">/ Contact Us</span>
             </div>
