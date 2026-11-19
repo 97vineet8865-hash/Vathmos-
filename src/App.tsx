@@ -8,6 +8,7 @@ import { TermsPage } from './pages/TermsPage';
 import { RefundPolicyPage } from './pages/RefundPolicyPage';
 import { ContactPage } from './pages/ContactPage';
 import { OnboardingPricingModal } from './components/OnboardingPricingModal';
+import { AuthModal } from './components/AuthModal';
 import { useAuth } from './context/AuthContext';
 import { trackEvent } from './utils/analytics';
 
@@ -49,6 +50,7 @@ export default function App() {
   return (
     <RouterProvider>
       <AppRoutes />
+      <AuthModal />
       <OnboardingPricingModal />
       <Analytics />
     </RouterProvider>

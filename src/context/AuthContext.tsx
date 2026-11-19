@@ -268,8 +268,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             data.user?.email
           );
           try {
-            if (window.location.search.includes('code=') || window.location.hash.includes('access_token=')) {
-              window.history.replaceState({}, '', window.location.pathname);
+            const hadOAuthParams =
+              window.location.search.includes('code=') ||
+              window.location.hash.includes('access_token=');
+            const wasOAuthPending = sessionStorage.getItem('vathmos_oauth_pending') === '1';
+            sessionStorage.removeItem('vathmos_oauth_pending');
+            const currentNormPath = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+            const shouldGoDashboard = (hadOAuthParams || wasOAuthPending) && currentNormPath === '/';
+            const targetPath = shouldGoDashboard ? '/dashboard' : currentNormPath;
+            if (hadOAuthParams || shouldGoDashboard) {
+              window.history.replaceState({}, '', targetPath);
+              if (shouldGoDashboard) {
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }
             }
           } catch {}
         } else {
@@ -800,7 +811,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setOauthError(null);
     try {
-      const redirectTarget = `${window.location.origin}${window.location.pathname}`;
+      try {
+        sessionStorage.setItem('vathmos_oauth_pending', '1');
+      } catch {}
+      const currentNormPath = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+      const returnPath = currentNormPath === '/' ? '/dashboard' : currentNormPath;
+      const redirectTarget = `${window.location.origin}${returnPath}`;
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -840,8 +856,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(STORAGE_KEY);
+      Object.keys(localStorage).forEach((k) => {
+        if (k.startsWith('sb-') && k.endsWith('-auth-token')) {
+          localStorage.removeItem(k);
+        }
+      });
     } catch {}
-    supabase?.auth.signOut().catch(() => {});
+    supabase?.auth.signOut({ scope: 'local' }).catch(() => {});
     setIsProfileModalOpen(false);
     setIsOnboardingModalOpen(false);
     setDispatchedNotification(null);

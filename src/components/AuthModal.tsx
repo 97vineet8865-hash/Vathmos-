@@ -60,6 +60,7 @@ export const AuthModal: React.FC = () => {
     setMode(authModalMode);
     setError(oauthError || null);
     setSuccessMsg(null);
+    setIsGoogleLoading(false);
   }, [authModalMode, isAuthModalOpen, oauthError]);
 
   const handleGoogleSignIn = async () => {

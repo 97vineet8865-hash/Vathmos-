@@ -8,7 +8,6 @@ import { ScorecardView } from '../components/ScorecardView';
 import { LeaderboardView } from '../components/LeaderboardView';
 import { JsonOutputModal } from '../components/JsonOutputModal';
 import { SideDrawer } from '../components/SideDrawer';
-import { AuthModal } from '../components/AuthModal';
 import { evaluateWithHeuristicRubric, sanitizeEvaluationResult } from '../utils/clientRubricEvaluator';
 import { ProfileModal } from '../components/ProfileModal';
 import { LegalCharterModal } from '../components/LegalCharterModal';
@@ -1118,8 +1117,7 @@ export const DashboardPage: React.FC = () => {
         onClose={() => setIsLegalModalOpen(false)}
       />
 
-      {/* Recruiter Authentication & Profile Modals */}
-      <AuthModal />
+      {/* Recruiter Profile Modal */}
       <ProfileModal candidates={candidates} jobDescription={jobDescription} />
     </div>
   );
