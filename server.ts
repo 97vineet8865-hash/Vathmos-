@@ -211,6 +211,7 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedbacks.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'app_config.json');
+const ANALYTICS_FILE = path.join(DATA_DIR, 'analytics.json');
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -1614,25 +1615,52 @@ app.post('/api/parse-pdf', async (req, res) => {
 
 function enforceUsageLimit(
   req: express.Request,
-  requiredCount: number = 1
-): { allowed: boolean; error?: string; remaining?: number; userTier?: string } {
+  requiredCount: number = 1,
+  quotaType: 'evaluations' | 'interviewQuestions' = 'evaluations',
+  options: { consumeImmediately?: boolean } = {}
+): {
+  allowed: boolean;
+  statusCode?: number;
+  error?: string;
+  remaining?: number;
+  userTier?: string;
+  userId?: string;
+  isAdmin?: boolean;
+} {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
 
   if (!token) {
-    // Permitted for initial unauthenticated trial (up to 5 candidates, free tier with 3 modes)
-    return { allowed: true, remaining: 5, userTier: 'free' };
+    return {
+      allowed: false,
+      statusCode: 401,
+      error:
+        quotaType === 'interviewQuestions'
+          ? 'Authentication required. Sign up free or sign in to unlock your 5 free AI interview guides.'
+          : 'Authentication required. Sign up free or sign in to unlock your 5 free candidate evaluations.',
+    };
   }
 
   const session = verifySessionToken(token);
   if (!session) {
-    return { allowed: false, error: 'Session expired or invalid token. Please sign in.' };
+    return {
+      allowed: false,
+      statusCode: 401,
+      error: 'Session expired or invalid token. Please sign in again.',
+    };
   }
 
   const users = getStoredUsers();
-  const user = users.find((u) => u.id === session.userId);
+  const cleanEmail = String(session.email || '').trim().toLowerCase();
+  const user = users.find(
+    (u) => u.id === session.userId || (cleanEmail && u.email.toLowerCase() === cleanEmail)
+  );
   if (!user) {
-    return { allowed: false, error: 'User account not found.' };
+    return {
+      allowed: false,
+      statusCode: 401,
+      error: 'User account not found. Please sign in again.',
+    };
   }
 
   const isAdmin =
@@ -1641,34 +1669,87 @@ function enforceUsageLimit(
     user.role === 'Founder & Lead Engineer';
 
   if (isAdmin) {
-    return { allowed: true, remaining: 999999, userTier: user.tier || 'agency' };
+    return {
+      allowed: true,
+      remaining: 999999,
+      userTier: user.tier || 'agency',
+      userId: user.id,
+      isAdmin: true,
+    };
   }
 
-  const limit = user.evaluationsLimit || TIER_LIMITS.free.evaluations;
-  const used = user.evaluationsUsed || 0;
+  const limit =
+    quotaType === 'interviewQuestions'
+      ? user.interviewQuestionsLimit || TIER_LIMITS.free.interviewQuestions
+      : user.evaluationsLimit || TIER_LIMITS.free.evaluations;
+  const used =
+    quotaType === 'interviewQuestions'
+      ? user.interviewQuestionsUsed || 0
+      : user.evaluationsUsed || 0;
   const remaining = Math.max(0, limit - used);
 
   if (remaining < requiredCount) {
     return {
       allowed: false,
-      error: `You have reached your evaluation limit (${used}/${limit} evaluations used) on your ${user.tier.toUpperCase()} plan. Please upgrade to continue.`,
+      statusCode: 403,
+      error:
+        quotaType === 'interviewQuestions'
+          ? `You have reached your interview guide limit (${used}/${limit} used) on your ${user.tier.toUpperCase()} plan. Please upgrade to continue.`
+          : `You have reached your evaluation limit (${used}/${limit} evaluations used) on your ${user.tier.toUpperCase()} plan. Please upgrade to continue.`,
       remaining: 0,
       userTier: user.tier,
+      userId: user.id,
+      isAdmin: false,
     };
   }
 
-  user.evaluationsUsed = used + requiredCount;
-  saveStoredUsers(users);
+  if (options.consumeImmediately) {
+    if (quotaType === 'interviewQuestions') {
+      user.interviewQuestionsUsed = used + requiredCount;
+    } else {
+      user.evaluationsUsed = used + requiredCount;
+    }
+    saveStoredUsers(users);
+  }
 
-  return { allowed: true, remaining: limit - user.evaluationsUsed, userTier: user.tier };
+  return {
+    allowed: true,
+    remaining: limit - used,
+    userTier: user.tier,
+    userId: user.id,
+    isAdmin: false,
+  };
+}
+
+function recordServerUsage(
+  userId: string | undefined,
+  quotaType: 'evaluations' | 'interviewQuestions',
+  count: number = 1
+): void {
+  if (!userId || count <= 0) return;
+  const users = getStoredUsers();
+  const user = users.find((u) => u.id === userId);
+  if (!user) return;
+  const isAdmin =
+    ADMIN_EMAILS.includes(user.email.toLowerCase()) ||
+    user.role === 'Platform Administrator' ||
+    user.role === 'Founder & Lead Engineer';
+  if (isAdmin) return;
+
+  if (quotaType === 'interviewQuestions') {
+    user.interviewQuestionsUsed = (user.interviewQuestionsUsed || 0) + count;
+  } else {
+    user.evaluationsUsed = (user.evaluationsUsed || 0) + count;
+  }
+  saveStoredUsers(users);
 }
 
 // Precision Single Candidate Evaluation API (/api/evaluate)
 app.post('/api/evaluate', async (req, res) => {
   try {
-    const usage = enforceUsageLimit(req, 1);
+    const usage = enforceUsageLimit(req, 1, 'evaluations');
     if (!usage.allowed) {
-      return res.status(403).json({ error: usage.error });
+      return res.status(usage.statusCode || 403).json({ error: usage.error });
     }
 
     const { jobDescription, resumeText, candidateName, strictnessMode } = req.body || {};
@@ -1746,6 +1827,7 @@ ${String(resumeText).slice(0, 6500)}`;
           if (oldestKey) evalResultCache.delete(oldestKey);
         }
         evalResultCache.set(evalCacheKey, { result: verified, cachedAt: Date.now() });
+        recordServerUsage(usage.userId, 'evaluations', 1);
         return res.json(verified);
       } catch (aiErr: any) {
         console.log('[/api/evaluate] Gemini fallback to calibrated multi-domain engine:', String(aiErr?.message || aiErr).slice(0, 140));
@@ -1763,6 +1845,7 @@ ${String(resumeText).slice(0, 6500)}`;
       if (oldestKey) evalResultCache.delete(oldestKey);
     }
     evalResultCache.set(evalCacheKey, { result: fallbackResult, cachedAt: Date.now() });
+    recordServerUsage(usage.userId, 'evaluations', 1);
     return res.json(fallbackResult);
   } catch (err: any) {
     console.error('Error in /api/evaluate:', err);
@@ -1782,9 +1865,9 @@ app.post('/api/evaluate-batch', async (req, res) => {
       return res.status(400).json({ error: 'At least one candidate is required for batch evaluation.' });
     }
 
-    const usage = enforceUsageLimit(req, candidates.length);
+    const usage = enforceUsageLimit(req, candidates.length, 'evaluations');
     if (!usage.allowed) {
-      return res.status(403).json({ error: usage.error });
+      return res.status(usage.statusCode || 403).json({ error: usage.error });
     }
 
     // Starter tier is locked to standard mode only; Strict & Lenient are exclusive to Free, Pro ($79), and Agency ($119)
@@ -1798,6 +1881,7 @@ app.post('/api/evaluate-batch', async (req, res) => {
         status: 'completed',
         result: evaluateWithHeuristicRubric(jobDescription, c.resumeText || '', c.name, effectiveBatchMode),
       }));
+      recordServerUsage(usage.userId, 'evaluations', candidates.length);
       return res.json(results);
     }
 
@@ -1841,6 +1925,7 @@ CRITICAL CALIBRATION MODE: OBJECTIVE 100-POINT AUDIT RUBRIC (STANDARD)
     const candidateChunks = chunkArray(candidates, 2);
     const finalResults: any[] = [];
 
+    let freshBatchCount = 0;
     for (let i = 0; i < candidateChunks.length; i++) {
       const chunk = candidateChunks[i];
       console.log(`Evaluating batch chunk ${i + 1} of ${candidateChunks.length} (${chunk.length} candidates in batch)...`);
@@ -1900,6 +1985,7 @@ SCORING & VERBATIM EVIDENCE RULES:
               if (oldestKey) evalResultCache.delete(oldestKey);
             }
             evalResultCache.set(batchCacheKey, { result: verified, cachedAt: Date.now() });
+            freshBatchCount++;
 
             return {
               id: c.id,
@@ -1915,6 +2001,7 @@ SCORING & VERBATIM EVIDENCE RULES:
                 c.name,
                 effectiveBatchMode
               );
+              freshBatchCount++;
               return {
                 id: c.id,
                 status: 'completed',
@@ -1936,6 +2023,10 @@ SCORING & VERBATIM EVIDENCE RULES:
       if (i < candidateChunks.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
+    }
+
+    if (freshBatchCount > 0) {
+      recordServerUsage(usage.userId, 'evaluations', freshBatchCount);
     }
 
     res.json(finalResults);
@@ -1988,6 +2079,11 @@ const interviewQuestionsSchema = {
 
 // On-demand AI Interview Question Generator API (1 Pro + 2 Cons Formula, Tech + Non-Tech)
 app.post('/api/generate-interview-questions', async (req, res) => {
+  const usage = enforceUsageLimit(req, 1, 'interviewQuestions');
+  if (!usage.allowed) {
+    return res.status(usage.statusCode || 403).json({ error: usage.error });
+  }
+
   const {
     jobDescription,
     candidateName,
@@ -2013,6 +2109,7 @@ app.post('/api/generate-interview-questions', async (req, res) => {
     const domainCtx = detectRoleDomain(jobDescription);
     const ai = getGenAI();
     if (!ai) {
+      recordServerUsage(usage.userId, 'interviewQuestions', 1);
       return res.json({
         questions: buildFallbackInterviewQuestions({
           jobDescription,
@@ -2077,6 +2174,7 @@ Output ONLY valid JSON adhering strictly to the schema.`;
       ? parsed
       : parsed?.items || [];
 
+    recordServerUsage(usage.userId, 'interviewQuestions', 1);
     res.json({
       questions:
         questionsList.length > 0
@@ -2085,6 +2183,7 @@ Output ONLY valid JSON adhering strictly to the schema.`;
     });
   } catch (err: any) {
     console.log('Interview Question Generator API note, generating calibrated fallback:', err?.message || err);
+    recordServerUsage(usage.userId, 'interviewQuestions', 1);
     res.json({
       questions: buildFallbackInterviewQuestions({
         jobDescription,
@@ -2252,6 +2351,14 @@ How can I help you make the best hiring call today?`;
 // Recruiter Co-Pilot AI Assistant Route
 app.post('/api/assistant', async (req, res) => {
   try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    if (!token || !verifySessionToken(token)) {
+      return res.status(401).json({
+        error: 'Authentication required. Please sign in to use the Recruiter Co-Pilot.',
+      });
+    }
+
     const { message, jobDescription, candidatesSummary, history, recruiterEmail } = req.body;
 
     if (!message || !message.trim()) {
@@ -2860,6 +2967,154 @@ app.post('/api/feedback/test-webhook', requireAdminAuth, async (req, res) => {
     res.json({ success: true, message: 'Test alert sent successfully!' });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Webhook test error' });
+  }
+});
+
+const ALLOWED_ANALYTICS_EVENTS = new Set([
+  'page_view',
+  'signup_completed',
+  'login_completed',
+  'evaluation_run',
+  'interview_guide_generated',
+  'upgrade_clicked',
+]);
+
+function getStoredAnalytics(): any[] {
+  try {
+    ensureDataDir();
+    if (!fs.existsSync(ANALYTICS_FILE)) return [];
+    const parsed = JSON.parse(fs.readFileSync(ANALYTICS_FILE, 'utf-8'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredAnalytics(events: any[]): void {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(events.slice(0, 5000), null, 2), 'utf-8');
+  } catch {
+    // Non-blocking
+  }
+}
+
+// Privacy-safe Analytics Event Ingestion (Zero-PII)
+app.post('/api/analytics', (req, res) => {
+  try {
+    const body = req.body || {};
+    const eventName = String(body.eventName || '').trim();
+    if (!ALLOWED_ANALYTICS_EVENTS.has(eventName)) {
+      return res.status(400).json({ error: 'Unsupported analytics event.' });
+    }
+
+    const newEvent = {
+      event_name: eventName,
+      path: String(body.path || '/').slice(0, 120),
+      referrer_host:
+        String(body.referrerHost || 'direct')
+          .toLowerCase()
+          .replace(/[^a-z0-9.:-]/g, '')
+          .slice(0, 100) || 'direct',
+      session_id: String(body.sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64),
+      user_tier: String(body.userTier || 'guest').slice(0, 24),
+      created_at: new Date().toISOString(),
+    };
+
+    const existing = getStoredAnalytics();
+    existing.unshift(newEvent);
+    saveStoredAnalytics(existing);
+
+    return res.json({ success: true });
+  } catch {
+    return res.json({ success: true });
+  }
+});
+
+// Admin-only Founder Monitoring & Analytics Summary
+app.get('/api/analytics', requireAdminAuth, (_req, res) => {
+  try {
+    const users = getStoredUsers();
+    const tierBreakdown: Record<string, number> = { free: 0, starter: 0, pro: 0, agency: 0 };
+    let totalEvaluationsRun = 0;
+    let totalGuidesGenerated = 0;
+
+    for (const u of users) {
+      const t = String(u.tier || 'free').toLowerCase();
+      tierBreakdown[t] = (tierBreakdown[t] || 0) + 1;
+      totalEvaluationsRun += Number(u.evaluationsUsed || 0);
+      totalGuidesGenerated += Number(u.interviewQuestionsUsed || 0);
+    }
+
+    const recentSignups = [...users]
+      .reverse()
+      .slice(0, 15)
+      .map((u) => ({
+        name: u.name,
+        email: u.email,
+        tier: u.tier || 'free',
+        evaluationsUsed: Number(u.evaluationsUsed || 0),
+        evaluationsLimit: Number(u.evaluationsLimit || 5),
+        interviewQuestionsUsed: Number(u.interviewQuestionsUsed || 0),
+        createdAt: u.createdAt || '',
+      }));
+
+    const events = getStoredAnalytics();
+    const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const todayStartMs = new Date().setUTCHours(0, 0, 0, 0);
+
+    let pageViewsToday = 0;
+    let pageViews7d = 0;
+    const uniqueSessions = new Set<string>();
+    const refCounts = new Map<string, number>();
+    const funnel7d = {
+      signups: 0,
+      logins: 0,
+      evaluations: 0,
+      guides: 0,
+      upgradeClicks: 0,
+    };
+
+    for (const ev of events) {
+      const ms = Date.parse(ev.created_at || '');
+      if (!Number.isNaN(ms) && ms < sevenDaysAgoMs) continue;
+      if (ev.session_id) uniqueSessions.add(String(ev.session_id));
+
+      if (ev.event_name === 'page_view') {
+        pageViews7d++;
+        if (!Number.isNaN(ms) && ms >= todayStartMs) pageViewsToday++;
+        const host = String(ev.referrer_host || 'direct') || 'direct';
+        refCounts.set(host, (refCounts.get(host) || 0) + 1);
+      } else if (ev.event_name === 'signup_completed') funnel7d.signups++;
+      else if (ev.event_name === 'login_completed') funnel7d.logins++;
+      else if (ev.event_name === 'evaluation_run') funnel7d.evaluations++;
+      else if (ev.event_name === 'interview_guide_generated') funnel7d.guides++;
+      else if (ev.event_name === 'upgrade_clicked') funnel7d.upgradeClicks++;
+    }
+
+    const topReferrers = Array.from(refCounts.entries())
+      .map(([host, count]) => ({ host, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
+    return res.json({
+      source: 'local',
+      analyticsTableReady: true,
+      supabaseConfigured: Boolean(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY),
+      totalUsers: users.length,
+      tierBreakdown,
+      totalEvaluationsRun,
+      totalGuidesGenerated,
+      pageViewsToday,
+      pageViews7d,
+      uniqueVisitors7d: uniqueSessions.size,
+      funnel7d,
+      topReferrers,
+      recentSignups,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to compute analytics summary.' });
   }
 });
 

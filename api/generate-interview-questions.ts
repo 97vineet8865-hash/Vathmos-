@@ -1,4 +1,66 @@
+import crypto from 'crypto';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+
+const ADMIN_EMAILS = [
+  'vathmossupport@gmail.com',
+  'vineet.842011@gmail.com',
+  '97.vineet.8865@gmail.com',
+];
+
+const TIER_LIMITS: Record<string, { evaluations: number; interviewQuestions: number }> = {
+  free: { evaluations: 5, interviewQuestions: 5 },
+  starter: { evaluations: 150, interviewQuestions: 80 },
+  pro: { evaluations: 400, interviewQuestions: 250 },
+  agency: { evaluations: 1000, interviewQuestions: 750 },
+};
+
+function getSupabaseConfig() {
+  let url = (
+    process.env.SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    'https://vzekrvpgxyjjnmkfwgot.supabase.co'
+  ).trim();
+  if (url.startsWith('https:') && !url.startsWith('https://')) {
+    url = 'https://' + url.slice('https:'.length).replace(/^\/+/, '');
+  }
+  url = url.replace(/\/+$/, '');
+
+  const secretKey = (
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    ''
+  ).trim();
+
+  return { url, secretKey };
+}
+
+function getSessionSecret(supabaseSecret: string): string {
+  return (
+    process.env.SESSION_SECRET ||
+    supabaseSecret ||
+    'vathmos_secure_session_secret_2026_prod'
+  );
+}
+
+function verifySessionToken(
+  token: string,
+  secret: string
+): { userId: string; email: string; role: string; tier: string; exp?: number } | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+  if (!data || !sig) return null;
+  const expectedSig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  if (sig !== expectedSig) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
+    if (payload.exp && Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 function detectRoleContext(jobDescription: string) {
   const safeJD = String(jobDescription || '').trim();
@@ -183,6 +245,94 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
+  const { url, secretKey } = getSupabaseConfig();
+  const secret = getSessionSecret(secretKey);
+  const authHeader = String(req.headers?.authorization || req.headers?.Authorization || '');
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+
+  if (!token) {
+    return res.status(401).json({
+      error: 'Authentication required. Sign up free or sign in to unlock your 5 free AI interview guides.',
+    });
+  }
+
+  const session = verifySessionToken(token, secret);
+  if (!session) {
+    return res.status(401).json({
+      error: 'Session expired or invalid token. Please sign in again.',
+    });
+  }
+
+  const cleanEmail = String(session.email || '').trim().toLowerCase();
+  const isAdmin =
+    ADMIN_EMAILS.includes(cleanEmail) ||
+    session.role === 'Platform Administrator' ||
+    session.role === 'Founder & Lead Engineer';
+
+  let userTier = String(session.tier || 'free').toLowerCase();
+  let currentUsed = 0;
+  let currentLimit = (TIER_LIMITS[userTier] || TIER_LIMITS.free).interviewQuestions;
+  let hasWorkspaceRow = false;
+
+  if (secretKey && url.startsWith('https://') && cleanEmail) {
+    try {
+      const wsResp = await fetch(
+        `${url}/rest/v1/vathmos_workspaces?email=eq.${encodeURIComponent(cleanEmail)}&select=tier,interview_questions_limit,interview_questions_used`,
+        {
+          headers: {
+            apikey: secretKey,
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      if (wsResp.ok) {
+        const rows: any[] = await wsResp.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          hasWorkspaceRow = true;
+          userTier = String(rows[0].tier || userTier).toLowerCase();
+          currentLimit = Number(
+            rows[0].interview_questions_limit ??
+              (TIER_LIMITS[userTier] || TIER_LIMITS.free).interviewQuestions
+          );
+          currentUsed = Number(rows[0].interview_questions_used ?? 0);
+        }
+      }
+    } catch {
+      // Proceed cleanly on transient Supabase timeout
+    }
+  }
+
+  if (!isAdmin && currentUsed >= currentLimit) {
+    return res.status(403).json({
+      error: `You have used all ${currentLimit} interview question guides on your ${userTier.toUpperCase()} tier. Please upgrade to continue.`,
+    });
+  }
+
+  const incrementInterviewGuideUsed = async () => {
+    if (isAdmin || !hasWorkspaceRow || !secretKey || !url.startsWith('https://') || !cleanEmail) return;
+    try {
+      await fetch(
+        `${url}/rest/v1/vathmos_workspaces?email=eq.${encodeURIComponent(cleanEmail)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            apikey: secretKey,
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            interview_questions_used: currentUsed + 1,
+            updated_at: new Date().toISOString(),
+          }),
+        }
+      );
+    } catch {
+      // Non-blocking sync
+    }
+  };
+
   const { jobDescription, candidateName, resumeText, pros, cons, matched_skills, missing_skills } = req.body || {};
   if (!jobDescription || !String(jobDescription).trim()) {
     return res.status(400).json({ error: 'Job Description is required.' });
@@ -263,6 +413,7 @@ RESUME CONTEXT: ${String(resumeText || '').slice(0, 3500)}`;
             .trim();
           const parsed = JSON.parse(rawText);
           if (Array.isArray(parsed?.questions) && parsed.questions.length > 0) {
+            await incrementInterviewGuideUsed();
             return res.status(200).json({ questions: parsed.questions.slice(0, 3) });
           }
         } catch (err: any) {
@@ -272,11 +423,13 @@ RESUME CONTEXT: ${String(resumeText || '').slice(0, 3500)}`;
       }
     }
 
+    await incrementInterviewGuideUsed();
     return res.status(200).json({
       questions: buildRoleAwareFallback({ jobDescription, pros, cons, matched_skills, missing_skills }),
     });
   } catch (err: any) {
     console.log('api/generate-interview-questions fallback:', String(err?.message || err));
+    await incrementInterviewGuideUsed();
     return res.status(200).json({
       questions: buildRoleAwareFallback({ jobDescription, pros, cons, matched_skills, missing_skills }),
     });

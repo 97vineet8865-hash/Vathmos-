@@ -35,6 +35,9 @@ import {
   Palette,
   Eye,
   Database,
+  BarChart3,
+  Users,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { CandidateItem, FeedbackItem } from '../types';
@@ -57,7 +60,11 @@ const COLOR_OPTIONS = [
   '#F59E0B', // Amber
 ];
 
-const ADMIN_EMAILS = ['vathmossupport@gmail.com'];
+const ADMIN_EMAILS = [
+  'vathmossupport@gmail.com',
+  'vineet.842011@gmail.com',
+  '97.vineet.8865@gmail.com',
+];
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
   candidates = [],
@@ -158,7 +165,41 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [wlStatus, setWlStatus] = useState<string | null>(null);
   const [supabaseServerConnected, setSupabaseServerConnected] = useState<boolean>(false);
 
-  const isAdmin = currentUser?.email && ADMIN_EMAILS.includes(currentUser.email.toLowerCase());
+  // Admin Analytics & Monitoring State
+  const [adminAnalytics, setAdminAnalytics] = useState<{
+    analyticsTableReady?: boolean;
+    supabaseConfigured?: boolean;
+    totalUsers: number;
+    tierBreakdown: Record<string, number>;
+    totalEvaluationsRun: number;
+    totalGuidesGenerated: number;
+    pageViewsToday: number;
+    pageViews7d: number;
+    uniqueVisitors7d: number;
+    funnel7d: {
+      signups: number;
+      logins: number;
+      evaluations: number;
+      guides: number;
+      upgradeClicks: number;
+    };
+    topReferrers: Array<{ host: string; count: number }>;
+    recentSignups: Array<{
+      name: string;
+      email: string;
+      tier: string;
+      evaluationsUsed: number;
+      evaluationsLimit: number;
+      interviewQuestionsUsed: number;
+      createdAt: string;
+    }>;
+  } | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
+  const isAdmin =
+    (currentUser?.email && ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) ||
+    currentUser?.role === 'Platform Administrator' ||
+    currentUser?.role === 'Founder & Lead Engineer';
 
   useEffect(() => {
     if (isProfileModalOpen) {
@@ -189,6 +230,27 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       console.error('Failed to load feedback reports:', err);
     } finally {
       setAdminLoading(false);
+    }
+  };
+
+  // Fetch privacy-safe founder monitoring & analytics
+  const loadAnalytics = async () => {
+    if (!token) return;
+    setAnalyticsLoading(true);
+    try {
+      const res = await fetch('/api/analytics', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminAnalytics(data);
+      }
+    } catch (err) {
+      console.error('Failed to load analytics:', err);
+    } finally {
+      setAnalyticsLoading(false);
     }
   };
 
@@ -713,7 +775,10 @@ How can I assist your hiring decision right now?`;
         const timer = setTimeout(() => ac.abort(), 7000);
         const res = await fetch('/api/assistant', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           signal: ac.signal,
           body: JSON.stringify({
             message: q,
@@ -1386,6 +1451,7 @@ How can I assist your hiring decision right now?`;
                   onClick={() => {
                     setActiveTab('admin');
                     loadReports();
+                    loadAnalytics();
                   }}
                   className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
                     activeTab === 'admin'
@@ -1804,9 +1870,193 @@ How can I assist your hiring decision right now?`;
             </form>
           )}
 
-          {/* TAB 3: ADMIN INBOX (Only visible to vathmossupport@gmail.com) */}
+          {/* TAB 3: ADMIN MONITORING & INBOX */}
           {activeTab === 'admin' && isAdmin && (
-            <div className="space-y-3 text-xs">
+            <div className="space-y-4 text-xs">
+              {/* Founder Monitoring & Analytics Panel */}
+              <div className="p-3.5 rounded-xl bg-[#161922] border border-cyan-500/25 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-cyan-400" />
+                    <span className="font-bold text-white">Founder Monitoring &amp; Analytics</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[9px] font-semibold uppercase">
+                      Zero Resume PII
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      loadAnalytics();
+                      loadReports();
+                    }}
+                    disabled={analyticsLoading || adminLoading}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#222633] hover:bg-[#2C3142] text-[10px] text-zinc-200 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${analyticsLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+
+                {analyticsLoading && !adminAnalytics ? (
+                  <div className="flex items-center justify-center py-4 text-zinc-400 gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                    <span>Loading founder metrics...</span>
+                  </div>
+                ) : adminAnalytics ? (
+                  <>
+                    {adminAnalytics.analyticsTableReady === false && (
+                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200">
+                        Run Section 7 of <code>supabase/schema.sql</code> in Supabase SQL Editor to activate 7-day traffic &amp; referrer tracking (<code>vathmos_analytics_events</code>).
+                      </div>
+                    )}
+
+                    {/* Top KPI Row */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
+                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                          <Users className="w-3 h-3 text-indigo-400" />
+                          <span>Total Accounts</span>
+                        </div>
+                        <div className="text-base font-bold text-white font-mono mt-0.5">
+                          {adminAnalytics.totalUsers}
+                        </div>
+                        <div className="text-[9px] text-zinc-500 truncate">
+                          F:{adminAnalytics.tierBreakdown?.free || 0} S:{adminAnalytics.tierBreakdown?.starter || 0} P:{adminAnalytics.tierBreakdown?.pro || 0} A:{adminAnalytics.tierBreakdown?.agency || 0}
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
+                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                          <Eye className="w-3 h-3 text-cyan-400" />
+                          <span>Views (Today / 7d)</span>
+                        </div>
+                        <div className="text-base font-bold text-cyan-300 font-mono mt-0.5">
+                          {adminAnalytics.pageViewsToday} / {adminAnalytics.pageViews7d}
+                        </div>
+                        <div className="text-[9px] text-zinc-500">
+                          {adminAnalytics.uniqueVisitors7d} unique visitors (7d)
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
+                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3 text-emerald-400" />
+                          <span>Total Evals Run</span>
+                        </div>
+                        <div className="text-base font-bold text-emerald-300 font-mono mt-0.5">
+                          {adminAnalytics.totalEvaluationsRun}
+                        </div>
+                        <div className="text-[9px] text-zinc-500">
+                          {adminAnalytics.funnel7d?.evaluations || 0} batches (7d)
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
+                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <span>Guides Generated</span>
+                        </div>
+                        <div className="text-base font-bold text-amber-300 font-mono mt-0.5">
+                          {adminAnalytics.totalGuidesGenerated}
+                        </div>
+                        <div className="text-[9px] text-zinc-500">
+                          {adminAnalytics.funnel7d?.upgradeClicks || 0} upgrade clicks (7d)
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Funnel + Top Referrers */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                          7-Day Conversion Funnel
+                        </div>
+                        <div className="space-y-1 text-[11px]">
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Page Views</span>
+                            <span className="font-mono text-white">{adminAnalytics.pageViews7d}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Signups Completed</span>
+                            <span className="font-mono text-emerald-300">{adminAnalytics.funnel7d?.signups || 0}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Sign-Ins</span>
+                            <span className="font-mono text-sky-300">{adminAnalytics.funnel7d?.logins || 0}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Evaluations / Guides</span>
+                            <span className="font-mono text-white">
+                              {adminAnalytics.funnel7d?.evaluations || 0} / {adminAnalytics.funnel7d?.guides || 0}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Upgrade / Beta Clicks</span>
+                            <span className="font-mono text-amber-300">{adminAnalytics.funnel7d?.upgradeClicks || 0}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                          Top Traffic Sources (7d)
+                        </div>
+                        {adminAnalytics.topReferrers && adminAnalytics.topReferrers.length > 0 ? (
+                          <div className="space-y-1 text-[11px]">
+                            {adminAnalytics.topReferrers.map((ref) => (
+                              <div key={ref.host} className="flex justify-between items-center">
+                                <span className="text-zinc-300 truncate max-w-[160px]">{ref.host}</span>
+                                <span className="font-mono text-cyan-300">{ref.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-zinc-500">No external referrer visits logged yet.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Recent Signups */}
+                    {adminAnalytics.recentSignups && adminAnalytics.recentSignups.length > 0 && (
+                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                          Recent Recruiter Signups
+                        </div>
+                        <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                          {adminAnalytics.recentSignups.slice(0, 8).map((u, idx) => (
+                            <div
+                              key={`${u.email}-${idx}`}
+                              className="flex items-center justify-between text-[11px] py-0.5 border-b border-white/[0.04] last:border-0"
+                            >
+                              <div className="truncate max-w-[200px]">
+                                <span className="text-white font-medium">{u.name}</span>{' '}
+                                <span className="text-zinc-500">({u.email})</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 font-mono text-[10px]">
+                                <span className="uppercase px-1.5 py-0.2 rounded bg-slate-800 text-cyan-300">
+                                  {u.tier}
+                                </span>
+                                <span className="text-zinc-400">
+                                  {u.evaluationsUsed}/{u.evaluationsLimit} evals
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-[10px] text-zinc-500">
+                      Vercel Web Analytics is also active for edge pageviews &amp; Web Vitals across <code>vathmos.co.in</code>.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[11px] text-zinc-400">
+                    Click Refresh to load account, funnel, and referrer metrics.
+                  </p>
+                )}
+              </div>
+
               {/* Header and Refresh */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
@@ -1824,7 +2074,10 @@ How can I assist your hiring decision right now?`;
                   </button>
                   <button
                     type="button"
-                    onClick={loadReports}
+                    onClick={() => {
+                      loadReports();
+                      loadAnalytics();
+                    }}
                     disabled={adminLoading}
                     className="p-1 rounded text-[#A1A1AA] hover:text-white hover:bg-[#27272A] cursor-pointer"
                     title="Refresh reports"

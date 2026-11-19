@@ -339,38 +339,46 @@ export const AuthModal: React.FC = () => {
 
         {/* Tab Switcher for Sign In / Sign Up */}
         {(mode === 'signin' || mode === 'signup') && (
-          <div className="grid grid-cols-2 p-1 bg-[#0E1018]/90 border border-white/[0.06] rounded-xl mb-4">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signin');
-                setError(null);
-                setSuccessMsg(null);
-              }}
-              className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                mode === 'signin'
-                  ? 'bg-white/[0.08] text-white shadow-xs'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signup');
-                setError(null);
-                setSuccessMsg(null);
-              }}
-              className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                mode === 'signup'
-                  ? 'bg-white/[0.08] text-white shadow-xs'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              Create Account
-            </button>
-          </div>
+          <>
+            <div className="mb-3.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2 text-xs text-emerald-200">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                <strong className="text-white">Free Account Benefit:</strong> 5 candidate evaluations + 5 AI interview guides — no credit card required.
+              </span>
+            </div>
+            <div className="grid grid-cols-2 p-1 bg-[#0E1018]/90 border border-white/[0.06] rounded-xl mb-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signin');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  mode === 'signin'
+                    ? 'bg-white/[0.08] text-white shadow-xs'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signup');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  mode === 'signup'
+                    ? 'bg-white/[0.08] text-white shadow-xs'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
+          </>
         )}
 
         {/* Alert / Feedback Messages */}

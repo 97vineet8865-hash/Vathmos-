@@ -138,3 +138,32 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 7. PRIVACY-SAFE ANALYTICS & FUNNEL EVENTS (Zero Resume PII)
+-- Never stores candidate names, resume text, JD content, or candidate emails.
+CREATE TABLE IF NOT EXISTS public.vathmos_analytics_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_name TEXT NOT NULL CHECK (event_name IN (
+        'page_view',
+        'signup_completed',
+        'login_completed',
+        'evaluation_run',
+        'interview_guide_generated',
+        'upgrade_clicked'
+    )),
+    path TEXT DEFAULT '/',
+    referrer_host TEXT DEFAULT 'direct',
+    session_id TEXT,
+    user_tier TEXT DEFAULT 'guest',
+    meta JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_vathmos_analytics_created_at
+    ON public.vathmos_analytics_events (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_vathmos_analytics_event_name
+    ON public.vathmos_analytics_events (event_name);
+
+ALTER TABLE public.vathmos_analytics_events ENABLE ROW LEVEL SECURITY;
+

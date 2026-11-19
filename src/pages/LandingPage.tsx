@@ -28,6 +28,7 @@ import { CreditCard,
   Mail
 } from 'lucide-react';
 import { Link, useRouter } from '../router/RouterContext';
+import { trackEvent } from '../utils/analytics';
 
 export const LandingPage: React.FC = () => {
   const [paymentSuccess, setPaymentSuccess] = useState<{ id: string; tierName: string } | null>(null);
@@ -35,6 +36,7 @@ export const LandingPage: React.FC = () => {
 
   const { currentUser, upgradeTier } = useAuth();
   const handleSubscribe = (tierId: 'starter' | 'pro' | 'agency') => {
+    trackEvent('upgrade_clicked', { tier: tierId }, currentUser?.tier || 'guest');
     if (IS_PUBLIC_BETA) {
       setBetaModalTier(tierId);
       return;
@@ -118,7 +120,7 @@ export const LandingPage: React.FC = () => {
           <span className="text-slate-500">•</span>
           <span>
             {IS_PUBLIC_BETA
-              ? 'Public Beta Live • Free 5-Candidate Trial Open'
+              ? 'Public Beta Live • Free 5-Eval Trial (Free Account)'
               : 'Catches AI Resume Fluff • Zero Black-Box Guessing'}
           </span>
         </div>
@@ -142,7 +144,7 @@ export const LandingPage: React.FC = () => {
             onClick={() => navigate('/dashboard')}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 active:scale-[0.98] text-white text-sm font-bold shadow-xl shadow-sky-500/25 transition-all cursor-pointer"
           >
-            <span>Try Demo Free</span>
+            <span>Sign Up Free (5 Evals)</span>
             <ArrowRight className="w-4 h-4" />
           </button>
           <button
@@ -529,7 +531,7 @@ export const LandingPage: React.FC = () => {
           </h2>
           <p className="text-sm text-slate-400">
             {IS_PUBLIC_BETA
-              ? 'Start today with 5 free evaluations & 5 AI interview guides. Online card & UPI checkout activates shortly — request founding beta access on any bundle below.'
+              ? 'Create a free account to unlock 5 candidate evaluations & 5 AI interview guides. Online card & UPI checkout activates shortly — request founding beta access on any bundle below.'
               : 'No convoluted per-seat penalties. Pay for what you screen with instant digital delivery.'}
           </p>
 

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { RouterProvider, useRouter } from './router/RouterContext';
 import { LandingPage } from './pages/LandingPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -7,12 +8,19 @@ import { TermsPage } from './pages/TermsPage';
 import { RefundPolicyPage } from './pages/RefundPolicyPage';
 import { ContactPage } from './pages/ContactPage';
 import { OnboardingPricingModal } from './components/OnboardingPricingModal';
+import { useAuth } from './context/AuthContext';
+import { trackEvent } from './utils/analytics';
 
 function AppRoutes() {
   const { pathname } = useRouter();
+  const { currentUser } = useAuth();
 
   // Normalize path (handle trailing slashes)
   const normalized = (pathname || '/').replace(/\/+$/, '') || '/';
+
+  useEffect(() => {
+    trackEvent('page_view', { source: normalized }, currentUser?.tier || 'guest');
+  }, [normalized]);
 
   switch (normalized) {
     case '':
@@ -41,6 +49,7 @@ export default function App() {
     <RouterProvider>
       <AppRoutes />
       <OnboardingPricingModal />
+      <Analytics />
     </RouterProvider>
   );
 }

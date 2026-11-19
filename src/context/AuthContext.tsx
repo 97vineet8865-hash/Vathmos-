@@ -9,6 +9,7 @@ import {
 } from '../utils/authSecurity';
 import { dispatchVerificationOtp } from '../utils/emailService';
 import { supabase } from '../lib/supabaseClient';
+import { trackEvent } from '../utils/analytics';
 
 export interface DispatchedCodeNotification {
   email: string;
@@ -255,6 +256,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setOauthError(null);
           setIsAuthModalOpen(false);
           setDispatchedNotification(null);
+          const isNewGoogleUser = data.user?.hasSeenOnboardingPlans === false;
+          trackEvent(
+            isNewGoogleUser ? 'signup_completed' : 'login_completed',
+            { method: 'google' },
+            data.user?.tier || 'free'
+          );
           try {
             if (window.location.search.includes('code=') || window.location.hash.includes('access_token=')) {
               window.history.replaceState({}, '', window.location.pathname);
@@ -368,6 +375,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {}
         setIsAuthModalOpen(false);
         setDispatchedNotification(null);
+        trackEvent('signup_completed', { method: 'email_immediate' }, body.user?.tier || 'free');
         return { success: true, verifiedImmediate: true };
       }
 
@@ -421,6 +429,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setIsAuthModalOpen(false);
       setDispatchedNotification(null);
+      trackEvent('signup_completed', { method: 'email_otp' }, userProfile?.tier || 'free');
 
       return { success: true };
     } catch (err: any) {
@@ -511,6 +520,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setIsAuthModalOpen(false);
       setDispatchedNotification(null);
+      trackEvent('login_completed', { method: 'password' }, userProfile?.tier || 'free');
 
       return { success: true };
     } catch (err: any) {

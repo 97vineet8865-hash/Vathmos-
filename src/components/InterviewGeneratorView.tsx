@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { buildFallbackInterviewQuestions } from '../utils/clientRubricEvaluator';
+import { trackEvent } from '../utils/analytics';
 
 interface InterviewGeneratorViewProps {
   candidates: CandidateItem[];
@@ -31,7 +32,7 @@ export const InterviewGeneratorView: React.FC<InterviewGeneratorViewProps> = ({
   jobDescription: defaultJobDescription,
   onOpenUpgradeModal,
 }) => {
-  const { currentUser, recordInterviewQuestionUsed, openAuthModal } = useAuth();
+  const { currentUser, isAuthenticated, token, recordInterviewQuestionUsed, openAuthModal } = useAuth();
 
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>(() => {
     const firstEvaluated = candidates.find((c) => c.result);
@@ -74,6 +75,14 @@ export const InterviewGeneratorView: React.FC<InterviewGeneratorViewProps> = ({
       : activeCandidate?.resumeText || '';
 
   const handleGenerate = async () => {
+    if (!isAuthenticated || !currentUser || !token) {
+      setErrorMessage(
+        'Create a free Vathmos account (Google or Email) to unlock your 5 free AI interview guides and 5 candidate evaluations.'
+      );
+      openAuthModal('signup');
+      return;
+    }
+
     if (!hasCredits) {
       setErrorMessage(
         `You have used all ${totalLimit} interview question guides on your ${
@@ -102,7 +111,10 @@ export const InterviewGeneratorView: React.FC<InterviewGeneratorViewProps> = ({
       try {
         const response = await fetch('/api/generate-interview-questions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({
             jobDescription: effectiveJobDesc,
             candidateName: effectiveName,
@@ -119,12 +131,21 @@ export const InterviewGeneratorView: React.FC<InterviewGeneratorViewProps> = ({
           if (Array.isArray(data.questions) && data.questions.length > 0) {
             questionsList = data.questions;
           }
+        } else if (response.status === 401) {
+          const errData = await response.json().catch(() => ({}));
+          openAuthModal('signup');
+          setErrorMessage(errData.error || 'Please sign up or sign in to generate AI interview guides.');
+          return;
+        } else if (response.status === 403) {
+          const errData = await response.json().catch(() => ({}));
+          setErrorMessage(errData.error || 'Interview guide quota exhausted. Please upgrade your plan.');
+          return;
         }
       } catch (fetchErr) {
         console.log('Network note, falling back to local heuristic synthesis');
       }
 
-      // If server returned empty or offline, generate calibrated role-aware fallback
+      // If server returned empty or transient 5xx/offline (already authenticated & quota verified), generate calibrated role-aware fallback
       if (questionsList.length === 0) {
         questionsList = buildFallbackInterviewQuestions({
           jobDescription: effectiveJobDesc,
@@ -140,6 +161,7 @@ export const InterviewGeneratorView: React.FC<InterviewGeneratorViewProps> = ({
 
       // Record 1 interview question generation credit used
       recordInterviewQuestionUsed(1);
+      trackEvent('interview_guide_generated', {}, currentUser?.tier || 'free');
     } catch (err: any) {
       setErrorMessage(err?.message || 'Failed to generate calibrated interview questions.');
     } finally {
@@ -310,25 +332,36 @@ ${q.caution}`;
         </div>
 
         {/* Tier & Remaining Credit Meter */}
-        <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/80 shrink-0 flex flex-col items-start sm:items-end space-y-1.5 min-w-[200px]">
+        <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/80 shrink-0 flex flex-col items-start sm:items-end space-y-1.5 min-w-[210px]">
           <div className="flex items-center gap-2 text-xs">
             <span className="text-slate-400">Current Plan:</span>
             <span className="font-extrabold uppercase px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-cyan-300 border border-slate-700">
-              {currentUser?.tier ? `${currentUser.tier} Plan` : 'Free Tier'}
+              {!isAuthenticated ? 'Sign-Up Bonus' : currentUser?.tier ? `${currentUser.tier} Plan` : 'Free Tier'}
             </span>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl font-extrabold text-white">{remainingGenerations}</span>
-            <span className="text-xs text-slate-400">/ {totalLimit} generations left</span>
-          </div>
-          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                hasCredits ? 'bg-cyan-400' : 'bg-rose-500'
-              }`}
-              style={{ width: `${Math.min(100, (remainingGenerations / totalLimit) * 100)}%` }}
-            />
-          </div>
+          {!isAuthenticated ? (
+            <>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xl font-extrabold text-emerald-400">5 free guides</span>
+              </div>
+              <span className="text-[11px] text-slate-400">Requires free account sign-up</span>
+            </>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-extrabold text-white">{remainingGenerations}</span>
+                <span className="text-xs text-slate-400">/ {totalLimit} generations left</span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    hasCredits ? 'bg-cyan-400' : 'bg-rose-500'
+                  }`}
+                  style={{ width: `${Math.min(100, (remainingGenerations / totalLimit) * 100)}%` }}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -446,9 +479,9 @@ ${q.caution}`;
           <div className="pt-2">
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || !hasCredits}
+              disabled={isGenerating || (isAuthenticated && !hasCredits)}
               className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-md ${
-                !hasCredits
+                isAuthenticated && !hasCredits
                   ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
                   : 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-sky-500/20 active:scale-[0.98]'
               }`}
@@ -457,6 +490,11 @@ ${q.caution}`;
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>Synthesizing 3 Questions...</span>
+                </>
+              ) : !isAuthenticated ? (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span>Sign Up Free to Generate (5 Free Guides)</span>
                 </>
               ) : !hasCredits ? (
                 <>
@@ -471,7 +509,9 @@ ${q.caution}`;
               )}
             </button>
             <p className="text-[10px] text-slate-400 text-center mt-2">
-              Consumes 1 of your {totalLimit} generations ({remainingGenerations} left).
+              {!isAuthenticated
+                ? 'Sign up free (Google or Email) to unlock your 5 AI interview guides.'
+                : `Consumes 1 of your ${totalLimit} generations (${remainingGenerations} left).`}
             </p>
           </div>
         </div>

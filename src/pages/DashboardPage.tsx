@@ -17,6 +17,7 @@ import { CandidateItem, EvaluationResult } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { AlertCircle, Shield, ArrowLeft, ExternalLink, HelpCircle, Mic, FileText, Zap, CheckCircle2 } from 'lucide-react';
 import { Link, useRouter } from '../router/RouterContext';
+import { trackEvent } from '../utils/analytics';
 
 function normalizeResumeFingerprint(text: string): string {
   return String(text || '')
@@ -109,7 +110,7 @@ function getUniqueCandidateName(
 
 export const DashboardPage: React.FC = () => {
   const { navigate } = useRouter();
-  const { currentUser, recordEvaluationUsed, token } = useAuth();
+  const { currentUser, isAuthenticated, recordEvaluationUsed, token, openAuthModal } = useAuth();
   const [activeTab, setActiveTab] = useState<'evaluation' | 'interview_studio'>('evaluation');
   const [jobDescription, setJobDescription] = useState<string>('');
   const [candidates, setCandidates] = useState<CandidateItem[]>([
@@ -207,6 +208,14 @@ export const DashboardPage: React.FC = () => {
       return;
     }
 
+    if (!isAuthenticated || !currentUser || !token) {
+      setWorkspaceNotice(
+        'Create a free Vathmos account (Google or Email) to unlock your 5 free candidate evaluations and 5 AI interview guides.'
+      );
+      openAuthModal('signup');
+      return;
+    }
+
     const evalsLimit = currentUser?.evaluationsLimit ?? 5;
     const evalsUsed = currentUser?.evaluationsUsed ?? 0;
     const evalsRemaining = Math.max(0, evalsLimit - evalsUsed);
@@ -256,12 +265,26 @@ export const DashboardPage: React.FC = () => {
           if (response.ok) {
             const rawResult = await response.json();
             result = sanitizeEvaluationResult(rawResult, jobDescription, candidate.resumeText, candidate.name, strictnessMode);
+          } else if (response.status === 401) {
+            const errData = await response.json().catch(() => ({}));
+            openAuthModal('signup');
+            const authErr: any = new Error(errData.error || 'Please sign up or sign in to run candidate evaluations.');
+            authErr.isHardStop = true;
+            throw authErr;
+          } else if (response.status === 403) {
+            const errData = await response.json().catch(() => ({}));
+            const limitErr: any = new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
+            limitErr.isHardStop = true;
+            throw limitErr;
           } else {
-            // If server returns non-ok, fall back immediately to calibrated multi-domain client evaluation
+            // If server returns 5xx when already authenticated & within quota, fall back to calibrated multi-domain client evaluation
             result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
           }
-        } catch (fetchErr) {
-          // Network error or offline - evaluate locally with 0 delay
+        } catch (fetchErr: any) {
+          if (fetchErr?.isHardStop) {
+            throw fetchErr;
+          }
+          // Network error or offline (already authenticated & quota verified) - evaluate locally
           result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
         }
         evalCacheRef.current.set(cacheKey, result);
@@ -299,6 +322,7 @@ export const DashboardPage: React.FC = () => {
 
       if (!usedCache) {
         recordEvaluationUsed(1);
+        trackEvent('evaluation_run', { count: 1, mode: strictnessMode }, currentUser?.tier || 'free');
       }
     } catch (err: any) {
       console.error('Evaluation failed:', err);
@@ -323,18 +347,25 @@ export const DashboardPage: React.FC = () => {
   const handleEvaluateAll = async () => {
     if (!jobDescription.trim()) return;
 
-    setIsEvaluating(true);
-    setErrorMessage(null);
-
     const targetCandidates = candidates.filter((c) => c.resumeText.trim());
     const totalCount = targetCandidates.length;
     const emptyCount = candidates.length - totalCount;
 
     if (totalCount === 0) {
-      setIsEvaluating(false);
       setErrorMessage('Please add at least one candidate resume before evaluating.');
       return;
     }
+
+    if (!isAuthenticated || !currentUser || !token) {
+      setWorkspaceNotice(
+        'Create a free Vathmos account (Google or Email) to unlock your 5 free candidate evaluations and 5 AI interview guides.'
+      );
+      openAuthModal('signup');
+      return;
+    }
+
+    setIsEvaluating(true);
+    setErrorMessage(null);
 
     const evalsLimit = currentUser?.evaluationsLimit ?? 5;
     const evalsUsed = currentUser?.evaluationsUsed ?? 0;
@@ -424,11 +455,21 @@ export const DashboardPage: React.FC = () => {
                       }),
                     });
                     if (response && response.ok) break;
+                    if (response && response.status === 401) {
+                      const errData = await response.json().catch(() => ({}));
+                      openAuthModal('signup');
+                      const authErr: any = new Error(errData.error || 'Please sign up or sign in to run evaluations.');
+                      authErr.isHardStop = true;
+                      throw authErr;
+                    }
                     if (response && response.status === 403) {
                       const errData = await response.json().catch(() => ({}));
-                      throw new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
+                      const limitErr: any = new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
+                      limitErr.isHardStop = true;
+                      throw limitErr;
                     }
-                  } catch (e) {
+                  } catch (e: any) {
+                    if (e?.isHardStop) throw e;
                     fetchErr = e;
                     if (attempt === 1) await new Promise((res) => setTimeout(res, 300));
                   }
@@ -437,14 +478,28 @@ export const DashboardPage: React.FC = () => {
                 if (response && response.ok) {
                   const rawBatchResult = await response.json();
                   result = sanitizeEvaluationResult(rawBatchResult, jobDescription, candidate.resumeText, candidate.name, strictnessMode);
+                } else if (response && response.status === 401) {
+                  const errData = await response.json().catch(() => ({}));
+                  openAuthModal('signup');
+                  const authErr: any = new Error(errData.error || 'Please sign up or sign in to run evaluations.');
+                  authErr.isHardStop = true;
+                  throw authErr;
                 } else if (response && response.status === 403) {
                   const errData = await response.json().catch(() => ({}));
-                  throw new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
+                  const limitErr: any = new Error(errData.error || 'Evaluation limit reached. Please upgrade your plan.');
+                  limitErr.isHardStop = true;
+                  throw limitErr;
                 } else {
                   result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
                 }
               } catch (evalErr: any) {
-                if (evalErr?.message?.includes('Evaluation limit') || evalErr?.message?.includes('limit reached')) {
+                if (
+                  evalErr?.isHardStop ||
+                  evalErr?.message?.includes('Evaluation limit') ||
+                  evalErr?.message?.includes('limit reached') ||
+                  evalErr?.message?.includes('sign up') ||
+                  evalErr?.message?.includes('sign in')
+                ) {
                   throw evalErr;
                 }
                 result = evaluateWithHeuristicRubric(jobDescription, candidate.resumeText, candidate.name, strictnessMode) as unknown as EvaluationResult;
@@ -517,6 +572,11 @@ export const DashboardPage: React.FC = () => {
 
       if (freshlyEvaluatedCount > 0) {
         recordEvaluationUsed(freshlyEvaluatedCount);
+        trackEvent(
+          'evaluation_run',
+          { count: freshlyEvaluatedCount, mode: strictnessMode },
+          currentUser?.tier || 'free'
+        );
       }
 
       if (hasTopCandidate) {
@@ -843,7 +903,9 @@ export const DashboardPage: React.FC = () => {
             <FileText className="w-4 h-4 text-cyan-400" />
             <span>100-Point Candidate Evaluation</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-900 border border-slate-700 text-slate-300">
-              {Math.max(0, (currentUser?.evaluationsLimit ?? 5) - (currentUser?.evaluationsUsed ?? 0))} evals left
+              {isAuthenticated
+                ? `${Math.max(0, (currentUser?.evaluationsLimit ?? 5) - (currentUser?.evaluationsUsed ?? 0))} evals left`
+                : 'Sign up: 5 free'}
             </span>
           </button>
 
@@ -860,7 +922,9 @@ export const DashboardPage: React.FC = () => {
             <Mic className="w-4 h-4 text-emerald-400" />
             <span>AI Interview Question Generator (3 Questions)</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950/60 border border-emerald-500/40 text-emerald-300">
-              {Math.max(0, (currentUser?.interviewQuestionsLimit ?? 5) - (currentUser?.interviewQuestionsUsed ?? 0))} guides left
+              {isAuthenticated
+                ? `${Math.max(0, (currentUser?.interviewQuestionsLimit ?? 5) - (currentUser?.interviewQuestionsUsed ?? 0))} guides left`
+                : 'Sign up: 5 free'}
             </span>
           </button>
         </div>

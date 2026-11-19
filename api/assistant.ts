@@ -1,4 +1,38 @@
+import crypto from 'crypto';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+
+function getSessionSecret(): string {
+  const supabaseSecret = (
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    ''
+  ).trim();
+  return (
+    process.env.SESSION_SECRET ||
+    supabaseSecret ||
+    'vathmos_secure_session_secret_2026_prod'
+  );
+}
+
+function verifySessionToken(
+  token: string,
+  secret: string
+): { userId: string; email: string; role: string; tier: string; exp?: number } | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+  if (!data || !sig) return null;
+  const expectedSig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  if (sig !== expectedSig) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
+    if (payload.exp && Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 function inferRoleInfo(jobDescription?: string): { roleTitle: string; isTechnical: boolean; domainLabel: string } {
   const safeJD = String(jobDescription || '').trim();
@@ -226,6 +260,20 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+
+  const authHeader = String(req.headers?.authorization || req.headers?.Authorization || '');
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token) {
+    return res.status(401).json({
+      error: 'Authentication required. Please sign in to use the Recruiter Co-Pilot.',
+    });
+  }
+  const session = verifySessionToken(token, getSessionSecret());
+  if (!session) {
+    return res.status(401).json({
+      error: 'Session expired or invalid token. Please sign in again.',
+    });
+  }
 
   const { message, jobDescription, candidatesSummary, history, recruiterEmail } = req.body || {};
   const fallbackReply = generateRecruiterAssistantResponse(

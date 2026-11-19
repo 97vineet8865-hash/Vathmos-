@@ -199,7 +199,7 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const tabScrollRef = useRef<HTMLDivElement>(null);
-  const { currentUser, openOnboardingModal } = useAuth();
+  const { currentUser, isAuthenticated, openOnboardingModal, openAuthModal } = useAuth();
   const [isParsing, setIsParsing] = useState<boolean>(false);
   const [parsingFileName, setParsingFileName] = useState<string>('');
   const [parseError, setParseError] = useState<string | null>(null);
@@ -834,8 +834,20 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
         </div>
       </div>
 
-      {/* Legal Decision-Support & Terms Acceptance Notice */}
-      <div className="pt-2 text-center sm:text-right">
+      {/* Sign-up notice & Legal Decision-Support Notice */}
+      <div className="pt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 text-center sm:text-right">
+        {!isAuthenticated ? (
+          <button
+            type="button"
+            onClick={() => openAuthModal('signup')}
+            className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 inline-flex items-center justify-center sm:justify-start gap-1 cursor-pointer"
+          >
+            <Lock className="w-3 h-3" />
+            <span>Free sign-up required to unlock 5 candidate evaluations</span>
+          </button>
+        ) : (
+          <span />
+        )}
         <p className="text-[10px] text-zinc-500">
           By running evaluations, you accept Vathmos's{' '}
           <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-cyan-400 underline underline-offset-2">Terms</a>
