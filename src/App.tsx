@@ -19,7 +19,8 @@ function AppRoutes() {
   const normalized = (pathname || '/').replace(/\/+$/, '') || '/';
 
   useEffect(() => {
-    trackEvent('page_view', { source: normalized }, currentUser?.tier || 'guest');
+    trackEvent('page_view', { source: normalized }, currentUser?.tier || 'guest', currentUser?.email);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalized]);
 
   switch (normalized) {

@@ -13,6 +13,7 @@ import { evaluateWithHeuristicRubric, sanitizeEvaluationResult } from '../utils/
 import { ProfileModal } from '../components/ProfileModal';
 import { LegalCharterModal } from '../components/LegalCharterModal';
 import { InterviewGeneratorView } from '../components/InterviewGeneratorView';
+import { QuickReviewPrompt } from '../components/QuickReviewPrompt';
 import { CandidateItem, EvaluationResult } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { AlertCircle, Shield, ArrowLeft, ExternalLink, HelpCircle, Mic, FileText, Zap, CheckCircle2 } from 'lucide-react';
@@ -52,11 +53,12 @@ function getUniqueCandidateName(
   baseName: string,
   existingCandidates: CandidateItem[],
   excludeId?: string,
-  fileName?: string
+  _fileName?: string
 ): string {
   const safeList = Array.isArray(existingCandidates) ? existingCandidates : [];
   const raw = (baseName || "").trim();
-  const cleanBase = raw.replace(/\s*\(\d+\)$/, "").trim();
+  const cleanBase = raw.replace(/\s*\(\d+\)$/, "").replace(/\s+/g, ' ').trim();
+  const norm = (val?: string) => (val || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
   // If baseName is generic like "Candidate" or empty
   const isGeneric = !cleanBase || /^candidate(\s*\d+|\s*\(\d+\))?$/i.test(cleanBase);
@@ -66,10 +68,7 @@ function getUniqueCandidateName(
     let candidateName = `Candidate ${num}`;
     while (
       safeList.some(
-        (c) =>
-          c &&
-          c.id !== excludeId &&
-          (c.name || '').trim().toLowerCase() === candidateName.toLowerCase()
+        (c) => c && c.id !== excludeId && norm(c.name) === candidateName.toLowerCase()
       )
     ) {
       num++;
@@ -80,10 +79,7 @@ function getUniqueCandidateName(
 
   // Check if a candidate with this exact name already exists in the list
   const hasCollision = safeList.some(
-    (c) =>
-      c &&
-      c.id !== excludeId &&
-      (c.name || '').trim().toLowerCase() === cleanBase.toLowerCase()
+    (c) => c && c.id !== excludeId && norm(c.name) === cleanBase.toLowerCase()
   );
 
   if (!hasCollision) {
@@ -91,15 +87,12 @@ function getUniqueCandidateName(
   }
 
   // If a collision occurs:
-  // Disambiguate using clean sequential numbering: "Rahul Mishra", "Rahul Mishra (2)"
+  // Disambiguate using clean sequential numbering: "Aditya Sharma", "Aditya Sharma (2)"
   let suffix = 2;
   let candidateName = `${cleanBase} (${suffix})`;
   while (
     safeList.some(
-      (c) =>
-        c &&
-        c.id !== excludeId &&
-        (c.name || '').trim().toLowerCase() === candidateName.toLowerCase()
+      (c) => c && c.id !== excludeId && norm(c.name) === candidateName.toLowerCase()
     )
   ) {
     suffix++;
@@ -1055,6 +1048,11 @@ export const DashboardPage: React.FC = () => {
             </button>
           </div>
         ) : null}
+
+        {/* Lightweight 10-second post-evaluation review prompt */}
+        <QuickReviewPrompt
+          hasCompletedEvaluation={candidates.some((c) => Boolean(c.result))}
+        />
           </>
         )}
 

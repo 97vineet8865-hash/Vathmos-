@@ -848,6 +848,7 @@ export default async function handler(req: any, res: any) {
         }),
       }).catch(() => {});
 
+      const isNewUser = !authUser && !workspace;
       const safeUser = buildSafeUser(
         { ...(authUser || googleUser), id: targetAuthId, email: cleanEmail, user_metadata: mergedMeta },
         workspace
@@ -864,7 +865,7 @@ export default async function handler(req: any, res: any) {
         sessionSecret
       );
 
-      return res.status(200).json({ success: true, token, user: safeUser });
+      return res.status(200).json({ success: true, isNewUser, token, user: safeUser });
     }
 
     return res.status(404).json({ error: `Unknown auth action: ${action}` });

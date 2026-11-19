@@ -45,6 +45,30 @@ function cleanCandidateDisplay(str: string): string {
   return `${cleaned}${suffix}`;
 }
 
+function ensureUniqueCandidateName(
+  baseName: string,
+  existingCandidates: CandidateItem[],
+  excludeId?: string
+): string {
+  const cleanBase = String(baseName || '').replace(/\s*\(\d+\)$/, '').replace(/\s+/g, ' ').trim();
+  if (!cleanBase) return 'Candidate';
+  const matches = (target: string) =>
+    existingCandidates.some(
+      (c) =>
+        c &&
+        c.id !== excludeId &&
+        (c.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === target.toLowerCase()
+    );
+  if (!matches(cleanBase)) return cleanBase;
+  let suffix = 2;
+  let nextName = `${cleanBase} (${suffix})`;
+  while (matches(nextName)) {
+    suffix++;
+    nextName = `${cleanBase} (${suffix})`;
+  }
+  return nextName;
+}
+
 // Helper to clean up file names to produce clean candidate names
 function cleanFileNameToName(fileName: string, fallbackIndex?: number): string {
   // Remove extension
@@ -284,8 +308,9 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
           candidateIdx >= 0 ? candidateIdx : undefined
         );
 
-        // Always update to the extracted real name from the resume or file
-        const finalName = name || currentCandidate.name || 'Candidate';
+        // Always update to the extracted real name from the resume or file, guaranteed unique
+        const rawFinalName = name || currentCandidate.name || 'Candidate';
+        const finalName = ensureUniqueCandidateName(rawFinalName, candidates, currentCandidate.id);
 
         // Check if this identical resume text already lives in another candidate slot
         const normIncoming = content.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -399,7 +424,7 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({
     ) {
       const detected = extractNameFromText(text);
       if (detected) {
-        updates.name = detected;
+        updates.name = ensureUniqueCandidateName(detected, candidates, currentCandidate.id);
       }
     }
 

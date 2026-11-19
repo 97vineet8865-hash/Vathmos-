@@ -15,6 +15,14 @@ const ALLOWED_EVENTS = new Set([
   'upgrade_clicked',
 ]);
 
+function isBotUserAgent(uaRaw: unknown): boolean {
+  const ua = String(uaRaw || '').trim();
+  if (!ua || ua.length < 12) return true;
+  return /bot|crawl|spider|slurp|headless|lighthouse|pingdom|uptime|preview|scanner|wget|curl|python|node-fetch|undici|vercel|phantom|puppeteer|playwright|facebookexternalhit|twitterbot|linkedinbot|slackbot|discordbot|telegrambot|whatsapp|ahrefs|semrush|mj12bot|yandex|bingpreview|googlebot|applebot/i.test(
+    ua
+  );
+}
+
 function getSupabaseConfig() {
   let url = (
     process.env.SUPABASE_URL ||
@@ -87,9 +95,14 @@ export default async function handler(req: any, res: any) {
 
   const { url, secretKey } = getSupabaseConfig();
 
-  // 1. Privacy-safe event ingestion (Zero-PII)
+  // 1. Privacy-safe event ingestion (Zero-PII + Bot/Crawler filter)
   if (req.method === 'POST') {
     try {
+      const userAgent = req.headers?.['user-agent'];
+      if (isBotUserAgent(userAgent)) {
+        return res.status(200).json({ success: true, ignored: 'bot' });
+      }
+
       const body = req.body || {};
       const eventName = String(body.eventName || '').trim();
       if (!ALLOWED_EVENTS.has(eventName)) {
@@ -133,7 +146,7 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // 2. Admin-only founder analytics summary
+  // 2. Admin-only founder analytics summary (separates External Users vs Founder accounts)
   if (req.method === 'GET') {
     const secret = getSessionSecret(secretKey);
     const authHeader = String(req.headers?.authorization || '');
@@ -159,10 +172,15 @@ export default async function handler(req: any, res: any) {
     }
 
     const tierBreakdown: Record<string, number> = { free: 0, starter: 0, pro: 0, agency: 0 };
+    const externalTierBreakdown: Record<string, number> = { free: 0, starter: 0, pro: 0, agency: 0 };
     let totalUsers = 0;
     let totalEvaluationsRun = 0;
     let totalGuidesGenerated = 0;
-    let recentSignups: Array<{
+    let externalUsers = 0;
+    let externalEvaluationsRun = 0;
+    let externalGuidesGenerated = 0;
+
+    type SignupSummary = {
       name: string;
       email: string;
       tier: string;
@@ -170,7 +188,11 @@ export default async function handler(req: any, res: any) {
       evaluationsLimit: number;
       interviewQuestionsUsed: number;
       createdAt: string;
-    }> = [];
+      isAdmin: boolean;
+    };
+
+    let recentSignups: SignupSummary[] = [];
+    let externalRecentSignups: SignupSummary[] = [];
 
     let analyticsTableReady = true;
     let pageViewsToday = 0;
@@ -202,21 +224,38 @@ export default async function handler(req: any, res: any) {
           const rows: any[] = await wsResp.json();
           if (Array.isArray(rows)) {
             totalUsers = rows.length;
-            for (const r of rows) {
+            const mapped: SignupSummary[] = rows.map((r) => {
+              const rowEmail = String(r.email || '').trim().toLowerCase();
+              const isRowAdmin = ADMIN_EMAILS.includes(rowEmail);
               const t = String(r.tier || 'free').toLowerCase();
+              const evalsUsed = Number(r.evaluations_used || 0);
+              const guidesUsed = Number(r.interview_questions_used || 0);
+
               tierBreakdown[t] = (tierBreakdown[t] || 0) + 1;
-              totalEvaluationsRun += Number(r.evaluations_used || 0);
-              totalGuidesGenerated += Number(r.interview_questions_used || 0);
-            }
-            recentSignups = rows.slice(0, 15).map((r) => ({
-              name: String(r.full_name || 'Recruiter'),
-              email: String(r.email || ''),
-              tier: String(r.tier || 'free'),
-              evaluationsUsed: Number(r.evaluations_used || 0),
-              evaluationsLimit: Number(r.evaluations_limit || 5),
-              interviewQuestionsUsed: Number(r.interview_questions_used || 0),
-              createdAt: String(r.created_at || ''),
-            }));
+              totalEvaluationsRun += evalsUsed;
+              totalGuidesGenerated += guidesUsed;
+
+              if (!isRowAdmin) {
+                externalUsers++;
+                externalTierBreakdown[t] = (externalTierBreakdown[t] || 0) + 1;
+                externalEvaluationsRun += evalsUsed;
+                externalGuidesGenerated += guidesUsed;
+              }
+
+              return {
+                name: String(r.full_name || 'Recruiter'),
+                email: String(r.email || ''),
+                tier: String(r.tier || 'free'),
+                evaluationsUsed: evalsUsed,
+                evaluationsLimit: Number(r.evaluations_limit || 5),
+                interviewQuestionsUsed: guidesUsed,
+                createdAt: String(r.created_at || ''),
+                isAdmin: isRowAdmin,
+              };
+            });
+
+            recentSignups = mapped.slice(0, 20);
+            externalRecentSignups = mapped.filter((u) => !u.isAdmin).slice(0, 25);
           }
         }
       } catch {
@@ -293,12 +332,17 @@ export default async function handler(req: any, res: any) {
       tierBreakdown,
       totalEvaluationsRun,
       totalGuidesGenerated,
+      externalUsers,
+      externalTierBreakdown,
+      externalEvaluationsRun,
+      externalGuidesGenerated,
       pageViewsToday,
       pageViews7d,
       uniqueVisitors7d,
       funnel7d,
       topReferrers,
       recentSignups,
+      externalRecentSignups,
       generatedAt: new Date().toISOString(),
     });
   }

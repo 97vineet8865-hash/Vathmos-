@@ -889,6 +889,7 @@ app.post('/api/auth/google', async (req, res) => {
     const isAdmin = ADMIN_EMAILS.includes(cleanEmail);
     const users = getStoredUsers();
     let user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    const isNewUser = !user;
 
     if (!user) {
       const tier = isAdmin ? 'agency' : 'free';
@@ -928,6 +929,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     return res.json({
       success: true,
+      isNewUser,
       token,
       user: sanitizeUser(user),
     });
@@ -2958,12 +2960,16 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
   }
 
   const users = getStoredUsers();
-  const user = users.find((u) => u.id === session.userId);
+  const sessionEmail = String(session.email || '').trim().toLowerCase();
+  const user = users.find(
+    (u) => u.id === session.userId || (sessionEmail && u.email.toLowerCase() === sessionEmail)
+  );
+  const effectiveEmail = (user?.email || sessionEmail).toLowerCase();
+  const effectiveRole = user?.role || session.role;
   const isAdmin =
-    user &&
-    (ADMIN_EMAILS.includes(user.email.toLowerCase()) ||
-      user.role === 'Platform Administrator' ||
-      user.role === 'Founder & Lead Engineer');
+    ADMIN_EMAILS.includes(effectiveEmail) ||
+    effectiveRole === 'Platform Administrator' ||
+    effectiveRole === 'Founder & Lead Engineer';
 
   if (!isAdmin) {
     return res.status(403).json({
@@ -2971,7 +2977,7 @@ function requireAdminAuth(req: express.Request, res: express.Response, next: exp
     });
   }
 
-  (req as any).user = user;
+  (req as any).user = user || { email: effectiveEmail, role: effectiveRole };
   next();
 }
 
@@ -3093,9 +3099,21 @@ function saveStoredAnalytics(events: any[]): void {
   }
 }
 
-// Privacy-safe Analytics Event Ingestion (Zero-PII)
+function isAnalyticsBotUserAgent(uaRaw: unknown): boolean {
+  const ua = String(uaRaw || '').trim();
+  if (!ua || ua.length < 12) return true;
+  return /bot|crawl|spider|slurp|headless|lighthouse|pingdom|uptime|preview|scanner|wget|curl|python|node-fetch|undici|vercel|phantom|puppeteer|playwright|facebookexternalhit|twitterbot|linkedinbot|slackbot|discordbot|telegrambot|whatsapp|ahrefs|semrush|mj12bot|yandex|bingpreview|googlebot|applebot/i.test(
+    ua
+  );
+}
+
+// Privacy-safe Analytics Event Ingestion (Zero-PII + Bot/Crawler filter)
 app.post('/api/analytics', (req, res) => {
   try {
+    if (isAnalyticsBotUserAgent(req.headers['user-agent'])) {
+      return res.json({ success: true, ignored: 'bot' });
+    }
+
     const body = req.body || {};
     const eventName = String(body.eventName || '').trim();
     if (!ALLOWED_ANALYTICS_EVENTS.has(eventName)) {
@@ -3130,28 +3148,45 @@ app.get('/api/analytics', requireAdminAuth, (_req, res) => {
   try {
     const users = getStoredUsers();
     const tierBreakdown: Record<string, number> = { free: 0, starter: 0, pro: 0, agency: 0 };
+    const externalTierBreakdown: Record<string, number> = { free: 0, starter: 0, pro: 0, agency: 0 };
     let totalEvaluationsRun = 0;
     let totalGuidesGenerated = 0;
+    let externalUsers = 0;
+    let externalEvaluationsRun = 0;
+    let externalGuidesGenerated = 0;
 
-    for (const u of users) {
+    const mappedUsers = [...users].reverse().map((u) => {
+      const cleanEmail = String(u.email || '').trim().toLowerCase();
+      const isRowAdmin = ADMIN_EMAILS.includes(cleanEmail);
       const t = String(u.tier || 'free').toLowerCase();
-      tierBreakdown[t] = (tierBreakdown[t] || 0) + 1;
-      totalEvaluationsRun += Number(u.evaluationsUsed || 0);
-      totalGuidesGenerated += Number(u.interviewQuestionsUsed || 0);
-    }
+      const evalsUsed = Number(u.evaluationsUsed || 0);
+      const guidesUsed = Number(u.interviewQuestionsUsed || 0);
 
-    const recentSignups = [...users]
-      .reverse()
-      .slice(0, 15)
-      .map((u) => ({
+      tierBreakdown[t] = (tierBreakdown[t] || 0) + 1;
+      totalEvaluationsRun += evalsUsed;
+      totalGuidesGenerated += guidesUsed;
+
+      if (!isRowAdmin) {
+        externalUsers++;
+        externalTierBreakdown[t] = (externalTierBreakdown[t] || 0) + 1;
+        externalEvaluationsRun += evalsUsed;
+        externalGuidesGenerated += guidesUsed;
+      }
+
+      return {
         name: u.name,
         email: u.email,
         tier: u.tier || 'free',
-        evaluationsUsed: Number(u.evaluationsUsed || 0),
+        evaluationsUsed: evalsUsed,
         evaluationsLimit: Number(u.evaluationsLimit || 5),
-        interviewQuestionsUsed: Number(u.interviewQuestionsUsed || 0),
+        interviewQuestionsUsed: guidesUsed,
         createdAt: u.createdAt || '',
-      }));
+        isAdmin: isRowAdmin,
+      };
+    });
+
+    const recentSignups = mappedUsers.slice(0, 20);
+    const externalRecentSignups = mappedUsers.filter((u) => !u.isAdmin).slice(0, 25);
 
     const events = getStoredAnalytics();
     const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -3199,12 +3234,17 @@ app.get('/api/analytics', requireAdminAuth, (_req, res) => {
       tierBreakdown,
       totalEvaluationsRun,
       totalGuidesGenerated,
+      externalUsers,
+      externalTierBreakdown,
+      externalEvaluationsRun,
+      externalGuidesGenerated,
       pageViewsToday,
       pageViews7d,
       uniqueVisitors7d: uniqueSessions.size,
       funnel7d,
       topReferrers,
       recentSignups,
+      externalRecentSignups,
       generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {

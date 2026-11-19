@@ -9,7 +9,7 @@ import {
 } from '../utils/authSecurity';
 import { dispatchVerificationOtp } from '../utils/emailService';
 import { supabase } from '../lib/supabaseClient';
-import { trackEvent } from '../utils/analytics';
+import { trackEvent, markFounderDevice } from '../utils/analytics';
 
 export interface DispatchedCodeNotification {
   email: string;
@@ -198,6 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (data.user) {
             setCurrentUser(data.user);
             setToken(savedToken);
+            markFounderDevice(data.user.email);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
             return;
           }
@@ -256,11 +257,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setOauthError(null);
           setIsAuthModalOpen(false);
           setDispatchedNotification(null);
-          const isNewGoogleUser = data.user?.hasSeenOnboardingPlans === false;
+          markFounderDevice(data.user?.email);
+          const isNewGoogleUser = Boolean(
+            data.isNewUser || data.user?.hasSeenOnboardingPlans === false
+          );
           trackEvent(
             isNewGoogleUser ? 'signup_completed' : 'login_completed',
             { method: 'google' },
-            data.user?.tier || 'free'
+            data.user?.tier || 'free',
+            data.user?.email
           );
           try {
             if (window.location.search.includes('code=') || window.location.hash.includes('access_token=')) {
@@ -311,10 +316,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser]);
 
-  // Sync session to localStorage
+  // Sync session to localStorage & tag founder device so own visits aren't counted
   useEffect(() => {
     try {
       if (currentUser) {
+        markFounderDevice(currentUser.email);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(currentUser));
       } else {
         localStorage.removeItem(STORAGE_KEY);
@@ -375,7 +381,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {}
         setIsAuthModalOpen(false);
         setDispatchedNotification(null);
-        trackEvent('signup_completed', { method: 'email_immediate' }, body.user?.tier || 'free');
+        markFounderDevice(body.user?.email);
+        trackEvent(
+          'signup_completed',
+          { method: 'email_immediate' },
+          body.user?.tier || 'free',
+          body.user?.email
+        );
         return { success: true, verifiedImmediate: true };
       }
 
@@ -429,7 +441,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setIsAuthModalOpen(false);
       setDispatchedNotification(null);
-      trackEvent('signup_completed', { method: 'email_otp' }, userProfile?.tier || 'free');
+      markFounderDevice(userProfile?.email);
+      trackEvent(
+        'signup_completed',
+        { method: 'email_otp' },
+        userProfile?.tier || 'free',
+        userProfile?.email
+      );
 
       return { success: true };
     } catch (err: any) {
@@ -520,7 +538,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setIsAuthModalOpen(false);
       setDispatchedNotification(null);
-      trackEvent('login_completed', { method: 'password' }, userProfile?.tier || 'free');
+      markFounderDevice(userProfile?.email);
+      trackEvent(
+        'login_completed',
+        { method: 'password' },
+        userProfile?.tier || 'free',
+        userProfile?.email
+      );
 
       return { success: true };
     } catch (err: any) {

@@ -166,6 +166,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [supabaseServerConnected, setSupabaseServerConnected] = useState<boolean>(false);
 
   // Admin Analytics & Monitoring State
+  const [externalOnly, setExternalOnly] = useState(true);
   const [adminAnalytics, setAdminAnalytics] = useState<{
     analyticsTableReady?: boolean;
     supabaseConfigured?: boolean;
@@ -173,6 +174,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     tierBreakdown: Record<string, number>;
     totalEvaluationsRun: number;
     totalGuidesGenerated: number;
+    externalUsers?: number;
+    externalTierBreakdown?: Record<string, number>;
+    externalEvaluationsRun?: number;
+    externalGuidesGenerated?: number;
     pageViewsToday: number;
     pageViews7d: number;
     uniqueVisitors7d: number;
@@ -192,6 +197,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       evaluationsLimit: number;
       interviewQuestionsUsed: number;
       createdAt: string;
+      isAdmin?: boolean;
+    }>;
+    externalRecentSignups?: Array<{
+      name: string;
+      email: string;
+      tier: string;
+      evaluationsUsed: number;
+      evaluationsLimit: number;
+      interviewQuestionsUsed: number;
+      createdAt: string;
+      isAdmin?: boolean;
     }>;
   } | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -1987,7 +2003,7 @@ How can I assist your hiring decision right now?`;
             <div className="space-y-4 text-xs">
               {/* Founder Monitoring & Analytics Panel */}
               <div className="p-3.5 rounded-xl bg-[#161922] border border-cyan-500/25 space-y-3">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <BarChart3 className="w-4 h-4 text-cyan-400" />
                     <span className="font-bold text-white">Founder Monitoring &amp; Analytics</span>
@@ -1995,18 +2011,33 @@ How can I assist your hiring decision right now?`;
                       Zero Resume PII
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      loadAnalytics();
-                      loadReports();
-                    }}
-                    disabled={analyticsLoading || adminLoading}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#222633] hover:bg-[#2C3142] text-[10px] text-zinc-200 cursor-pointer"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${analyticsLoading ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setExternalOnly((prev) => !prev)}
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold border transition cursor-pointer ${
+                        externalOnly
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                          : 'bg-[#222633] text-zinc-300 border-white/[0.08]'
+                      }`}
+                      title="Hide founder/test emails so you only see external users"
+                    >
+                      <Users className="w-3 h-3" />
+                      <span>{externalOnly ? 'External Users Only' : 'All (Incl. Me)'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        loadAnalytics();
+                        loadReports();
+                      }}
+                      disabled={analyticsLoading || adminLoading}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#222633] hover:bg-[#2C3142] text-[10px] text-zinc-200 cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${analyticsLoading ? 'animate-spin' : ''}`} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
                 </div>
 
                 {analyticsLoading && !adminAnalytics ? (
@@ -2015,153 +2046,201 @@ How can I assist your hiring decision right now?`;
                     <span>Loading founder metrics...</span>
                   </div>
                 ) : adminAnalytics ? (
-                  <>
-                    {adminAnalytics.analyticsTableReady === false && (
-                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200">
-                        Run Section 7 of <code>supabase/schema.sql</code> in Supabase SQL Editor to activate 7-day traffic &amp; referrer tracking (<code>vathmos_analytics_events</code>).
-                      </div>
-                    )}
+                  (() => {
+                    const displayedUsers = externalOnly
+                      ? adminAnalytics.externalUsers ??
+                        adminAnalytics.recentSignups.filter(
+                          (u) => !u.isAdmin && !ADMIN_EMAILS.includes(u.email.toLowerCase())
+                        ).length
+                      : adminAnalytics.totalUsers;
+                    const displayedTiers = externalOnly
+                      ? adminAnalytics.externalTierBreakdown || { free: 0, starter: 0, pro: 0, agency: 0 }
+                      : adminAnalytics.tierBreakdown;
+                    const displayedEvals = externalOnly
+                      ? adminAnalytics.externalEvaluationsRun ?? 0
+                      : adminAnalytics.totalEvaluationsRun;
+                    const displayedGuides = externalOnly
+                      ? adminAnalytics.externalGuidesGenerated ?? 0
+                      : adminAnalytics.totalGuidesGenerated;
+                    const displayedSignups = externalOnly
+                      ? adminAnalytics.externalRecentSignups ||
+                        adminAnalytics.recentSignups.filter(
+                          (u) => !u.isAdmin && !ADMIN_EMAILS.includes(u.email.toLowerCase())
+                        )
+                      : adminAnalytics.recentSignups;
 
-                    {/* Top KPI Row */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
-                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
-                          <Users className="w-3 h-3 text-indigo-400" />
-                          <span>Total Accounts</span>
-                        </div>
-                        <div className="text-base font-bold text-white font-mono mt-0.5">
-                          {adminAnalytics.totalUsers}
-                        </div>
-                        <div className="text-[9px] text-zinc-500 truncate">
-                          F:{adminAnalytics.tierBreakdown?.free || 0} S:{adminAnalytics.tierBreakdown?.starter || 0} P:{adminAnalytics.tierBreakdown?.pro || 0} A:{adminAnalytics.tierBreakdown?.agency || 0}
-                        </div>
-                      </div>
-
-                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
-                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
-                          <Eye className="w-3 h-3 text-cyan-400" />
-                          <span>Views (Today / 7d)</span>
-                        </div>
-                        <div className="text-base font-bold text-cyan-300 font-mono mt-0.5">
-                          {adminAnalytics.pageViewsToday} / {adminAnalytics.pageViews7d}
-                        </div>
-                        <div className="text-[9px] text-zinc-500">
-                          {adminAnalytics.uniqueVisitors7d} unique visitors (7d)
-                        </div>
-                      </div>
-
-                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
-                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3 text-emerald-400" />
-                          <span>Total Evals Run</span>
-                        </div>
-                        <div className="text-base font-bold text-emerald-300 font-mono mt-0.5">
-                          {adminAnalytics.totalEvaluationsRun}
-                        </div>
-                        <div className="text-[9px] text-zinc-500">
-                          {adminAnalytics.funnel7d?.evaluations || 0} batches (7d)
-                        </div>
-                      </div>
-
-                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
-                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-amber-400" />
-                          <span>Guides Generated</span>
-                        </div>
-                        <div className="text-base font-bold text-amber-300 font-mono mt-0.5">
-                          {adminAnalytics.totalGuidesGenerated}
-                        </div>
-                        <div className="text-[9px] text-zinc-500">
-                          {adminAnalytics.funnel7d?.upgradeClicks || 0} upgrade clicks (7d)
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Funnel + Top Referrers */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                          7-Day Conversion Funnel
-                        </div>
-                        <div className="space-y-1 text-[11px]">
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Page Views</span>
-                            <span className="font-mono text-white">{adminAnalytics.pageViews7d}</span>
+                    return (
+                      <>
+                        {adminAnalytics.analyticsTableReady === false && (
+                          <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200">
+                            Run Section 7 of <code>supabase/schema.sql</code> in Supabase SQL Editor to activate 7-day traffic &amp; referrer tracking (<code>vathmos_analytics_events</code>).
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Signups Completed</span>
-                            <span className="font-mono text-emerald-300">{adminAnalytics.funnel7d?.signups || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Sign-Ins</span>
-                            <span className="font-mono text-sky-300">{adminAnalytics.funnel7d?.logins || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Evaluations / Guides</span>
-                            <span className="font-mono text-white">
-                              {adminAnalytics.funnel7d?.evaluations || 0} / {adminAnalytics.funnel7d?.guides || 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Upgrade / Beta Clicks</span>
-                            <span className="font-mono text-amber-300">{adminAnalytics.funnel7d?.upgradeClicks || 0}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                          Top Traffic Sources (7d)
-                        </div>
-                        {adminAnalytics.topReferrers && adminAnalytics.topReferrers.length > 0 ? (
-                          <div className="space-y-1 text-[11px]">
-                            {adminAnalytics.topReferrers.map((ref) => (
-                              <div key={ref.host} className="flex justify-between items-center">
-                                <span className="text-zinc-300 truncate max-w-[160px]">{ref.host}</span>
-                                <span className="font-mono text-cyan-300">{ref.count}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-[11px] text-zinc-500">No external referrer visits logged yet.</p>
                         )}
-                      </div>
-                    </div>
 
-                    {/* Recent Signups */}
-                    {adminAnalytics.recentSignups && adminAnalytics.recentSignups.length > 0 && (
-                      <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                          Recent Recruiter Signups
+                        {/* Top KPI Row */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
+                            <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                              <Users className="w-3 h-3 text-indigo-400" />
+                              <span>{externalOnly ? 'External Accounts' : 'Total Accounts'}</span>
+                            </div>
+                            <div className="text-base font-bold text-white font-mono mt-0.5">
+                              {displayedUsers}
+                            </div>
+                            <div className="text-[9px] text-zinc-500 truncate">
+                              F:{displayedTiers?.free || 0} S:{displayedTiers?.starter || 0} P:{displayedTiers?.pro || 0} A:{displayedTiers?.agency || 0}
+                            </div>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
+                            <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                              <Eye className="w-3 h-3 text-cyan-400" />
+                              <span>Views (Today / 7d)</span>
+                            </div>
+                            <div className="text-base font-bold text-cyan-300 font-mono mt-0.5">
+                              {adminAnalytics.pageViewsToday} / {adminAnalytics.pageViews7d}
+                            </div>
+                            <div className="text-[9px] text-zinc-500">
+                              {adminAnalytics.uniqueVisitors7d} human sessions (7d)
+                            </div>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
+                            <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                              <TrendingUp className="w-3 h-3 text-emerald-400" />
+                              <span>{externalOnly ? 'External Evals' : 'Total Evals Run'}</span>
+                            </div>
+                            <div className="text-base font-bold text-emerald-300 font-mono mt-0.5">
+                              {displayedEvals}
+                            </div>
+                            <div className="text-[9px] text-zinc-500">
+                              {adminAnalytics.funnel7d?.evaluations || 0} batches (7d)
+                            </div>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06]">
+                            <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-amber-400" />
+                              <span>{externalOnly ? 'External Guides' : 'Guides Generated'}</span>
+                            </div>
+                            <div className="text-base font-bold text-amber-300 font-mono mt-0.5">
+                              {displayedGuides}
+                            </div>
+                            <div className="text-[9px] text-zinc-500">
+                              {adminAnalytics.funnel7d?.upgradeClicks || 0} upgrade clicks (7d)
+                            </div>
+                          </div>
                         </div>
-                        <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
-                          {adminAnalytics.recentSignups.slice(0, 8).map((u, idx) => (
-                            <div
-                              key={`${u.email}-${idx}`}
-                              className="flex items-center justify-between text-[11px] py-0.5 border-b border-white/[0.04] last:border-0"
-                            >
-                              <div className="truncate max-w-[200px]">
-                                <span className="text-white font-medium">{u.name}</span>{' '}
-                                <span className="text-zinc-500">({u.email})</span>
+
+                        {/* Funnel + Top Referrers */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                              7-Day Conversion Funnel (No Bots / Self)
+                            </div>
+                            <div className="space-y-1 text-[11px]">
+                              <div className="flex justify-between">
+                                <span className="text-zinc-400">Page Views</span>
+                                <span className="font-mono text-white">{adminAnalytics.pageViews7d}</span>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0 font-mono text-[10px]">
-                                <span className="uppercase px-1.5 py-0.2 rounded bg-slate-800 text-cyan-300">
-                                  {u.tier}
+                              <div className="flex justify-between">
+                                <span className="text-zinc-400">Signups Completed</span>
+                                <span className="font-mono text-emerald-300">{adminAnalytics.funnel7d?.signups || 0}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-zinc-400">Sign-Ins</span>
+                                <span className="font-mono text-sky-300">{adminAnalytics.funnel7d?.logins || 0}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-zinc-400">Evaluations / Guides</span>
+                                <span className="font-mono text-white">
+                                  {adminAnalytics.funnel7d?.evaluations || 0} / {adminAnalytics.funnel7d?.guides || 0}
                                 </span>
-                                <span className="text-zinc-400">
-                                  {u.evaluationsUsed}/{u.evaluationsLimit} evals
-                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-zinc-400">Upgrade / Beta Clicks</span>
+                                <span className="font-mono text-amber-300">{adminAnalytics.funnel7d?.upgradeClicks || 0}</span>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                          </div>
 
-                    <p className="text-[10px] text-zinc-500">
-                      Vercel Web Analytics is also active for edge pageviews &amp; Web Vitals across <code>vathmos.co.in</code>.
-                    </p>
-                  </>
+                          <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                              Top Traffic Sources (7d)
+                            </div>
+                            {adminAnalytics.topReferrers && adminAnalytics.topReferrers.length > 0 ? (
+                              <div className="space-y-1 text-[11px]">
+                                {adminAnalytics.topReferrers.map((ref) => (
+                                  <div key={ref.host} className="flex justify-between items-center">
+                                    <span className="text-zinc-300 truncate max-w-[160px]">{ref.host}</span>
+                                    <span className="font-mono text-cyan-300">{ref.count}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-zinc-500">No external referrer visits logged yet.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Recent Signups */}
+                        <div className="p-2.5 rounded-lg bg-[#0F1219] border border-white/[0.06] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                              {externalOnly ? 'External Users (Ready for Feedback Outreach)' : 'Recent Recruiter Signups'}
+                            </span>
+                            <span className="text-[10px] font-mono text-zinc-500">
+                              {displayedSignups.length} shown
+                            </span>
+                          </div>
+                          {displayedSignups.length > 0 ? (
+                            <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
+                              {displayedSignups.slice(0, 12).map((u, idx) => (
+                                <div
+                                  key={`${u.email}-${idx}`}
+                                  className="flex items-center justify-between gap-2 text-[11px] py-1 border-b border-white/[0.04] last:border-0"
+                                >
+                                  <div className="truncate max-w-[200px]">
+                                    <span className="text-white font-medium">{u.name}</span>{' '}
+                                    <span className="text-zinc-500">({u.email})</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0 font-mono text-[10px]">
+                                    <span className="uppercase px-1.5 py-0.2 rounded bg-slate-800 text-cyan-300">
+                                      {u.tier}
+                                    </span>
+                                    <span className="text-zinc-400">
+                                      {u.evaluationsUsed}/{u.evaluationsLimit} evals
+                                    </span>
+                                    {!u.isAdmin && u.email && (
+                                      <a
+                                        href={`mailto:${encodeURIComponent(u.email)}?subject=${encodeURIComponent(
+                                          'Quick question about your Vathmos experience'
+                                        )}&body=${encodeURIComponent(
+                                          `Hi ${u.name || 'there'},\n\nThanks for signing up to Vathmos (vathmos.co.in)! I'm Vineet, the founder.\n\nQuick 10-second question: Did you immediately catch what Vathmos is built for, and did the 100-point rubric score match your expectations?\n\nBest,\nVineet`
+                                        )}`}
+                                        className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/35 border border-indigo-500/30 font-sans font-semibold"
+                                        title={`Email ${u.email} for review`}
+                                      >
+                                        Ask Review
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-zinc-500 py-1">
+                              No external signups yet — only your own founder/test accounts are registered so far.
+                            </p>
+                          )}
+                        </div>
+
+                        <p className="text-[10px] text-zinc-500">
+                          Bots, link scanners, and your own signed-in founder browser are automatically excluded from event tracking.
+                        </p>
+                      </>
+                    );
+                  })()
                 ) : (
                   <p className="text-[11px] text-zinc-400">
                     Click Refresh to load account, funnel, and referrer metrics.
