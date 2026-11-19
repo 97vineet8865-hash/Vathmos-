@@ -2196,6 +2196,88 @@ Output ONLY valid JSON adhering strictly to the schema.`;
   }
 });
 
+function extractExplicitPersonName(query: string): string | null {
+  const m = query.match(
+    /\b(?:for|to|about|regarding|candidate)\s+([a-zA-Z'’-]+(?:\s+[a-zA-Z'’-]+){0,2})/i
+  );
+  if (!m?.[1]) return null;
+  const raw = m[1]
+    .replace(
+      /\b(please|pls|plz|now|today|asap|email|letter|invite|rejection|candidate|role|position|her|him|them)\b.*$/i,
+      ''
+    )
+    .trim();
+  if (!raw || raw.length < 2) return null;
+  if (/^(me|my|him|her|them|someone|candidate|everyone|all|us|this|that)$/i.test(raw)) {
+    return null;
+  }
+  return raw
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function resolveAssistantCandidate(
+  query: string,
+  candidatesList: any[],
+  defaultMode: 'top' | 'lowest' = 'top'
+): { matched: any | null; resolvedName: string } {
+  const qLower = String(query || '').toLowerCase();
+  const safeList = Array.isArray(candidatesList) ? candidatesList : [];
+  const evaluatedOnly = safeList.filter((c) => typeof c?.score === 'number');
+  const pool = evaluatedOnly.length > 0 ? evaluatedOnly : safeList;
+
+  let bestCand: any | null = null;
+  let bestScore = 0;
+
+  for (const cand of safeList) {
+    const cleanName = String(cand?.name || '').replace(/\s*\(\d+\)$/, '').trim();
+    if (!cleanName || /^candidate\s*\d*$/i.test(cleanName)) continue;
+    const lowerName = cleanName.toLowerCase();
+
+    if (qLower.includes(lowerName)) {
+      const matchWeight = 100 + lowerName.length;
+      if (matchWeight > bestScore) {
+        bestScore = matchWeight;
+        bestCand = cand;
+      }
+      continue;
+    }
+
+    const tokens = lowerName.split(/\s+/).filter((t) => t.length >= 2);
+    let matchedTokens = 0;
+    for (const tok of tokens) {
+      const escaped = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`\\b${escaped}\\b`, 'i').test(qLower)) {
+        matchedTokens++;
+      }
+    }
+    if (matchedTokens > 0) {
+      const matchWeight = matchedTokens * 20;
+      if (matchWeight > bestScore) {
+        bestScore = matchWeight;
+        bestCand = cand;
+      }
+    }
+  }
+
+  if (bestCand) {
+    return { matched: bestCand, resolvedName: bestCand.name };
+  }
+
+  const explicitTypedName = extractExplicitPersonName(query);
+  if (explicitTypedName) {
+    return { matched: null, resolvedName: explicitTypedName };
+  }
+
+  if (pool.length > 0) {
+    const fallback = defaultMode === 'lowest' ? pool[pool.length - 1] : pool[0];
+    return { matched: fallback, resolvedName: fallback?.name || 'Candidate' };
+  }
+
+  return { matched: null, resolvedName: 'Candidate' };
+}
+
 function generateRecruiterAssistantFallback(
   message: string,
   candidatesSummary?: any[],
@@ -2203,6 +2285,11 @@ function generateRecruiterAssistantFallback(
 ): string {
   const msgLower = (message || '').toLowerCase();
   const domainCtx = detectRoleDomain(jobDescription || '');
+  const evaluatedCandidates = [...(candidatesSummary || [])]
+    .filter((c) => typeof c?.score === 'number')
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
+  const sortedCandidates =
+    evaluatedCandidates.length > 0 ? evaluatedCandidates : [...(candidatesSummary || [])];
   const interviewType = domainCtx.isTechnical ? 'technical conversation' : 'interview conversation';
   const roundFocus = domainCtx.isTechnical
     ? 'your projects and technical decisions'
@@ -2255,8 +2342,12 @@ function generateRecruiterAssistantFallback(
     msgLower.includes('interview') ||
     (msgLower.includes('email') && !msgLower.includes('reject'))
   ) {
-    const topCand = candidatesSummary && candidatesSummary[0] ? candidatesSummary[0].name : 'Candidate';
-    const topEmail = candidatesSummary && candidatesSummary[0]?.email ? candidatesSummary[0].email : `${topCand.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`;
+    const { matched: topCandObj, resolvedName: topCand } = resolveAssistantCandidate(
+      message,
+      sortedCandidates,
+      'top'
+    );
+    const topEmail = topCandObj?.email || `${topCand.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`;
 
     return `I have prepared a tailored, professional interview invitation for **${topCand}**. 
 
@@ -2288,13 +2379,11 @@ ${JSON.stringify(
     msgLower.includes('pass') ||
     msgLower.includes('rejection letter')
   ) {
-    const rejectCandObj =
-      candidatesSummary && candidatesSummary.length > 1
-        ? candidatesSummary[candidatesSummary.length - 1]
-        : candidatesSummary && candidatesSummary[0]
-        ? candidatesSummary[0]
-        : null;
-    const candName = rejectCandObj?.name || 'Candidate';
+    const { matched: rejectCandObj, resolvedName: candName } = resolveAssistantCandidate(
+      message,
+      sortedCandidates,
+      'lowest'
+    );
     const candEmail =
       rejectCandObj?.email ||
       `${candName.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`;
@@ -2405,6 +2494,7 @@ TONE & BEHAVIOR:
 - Adapt strictly to the actual role (${domainCtx.roleTitle}). Never say "Engineering Team" or "technical round" unless the JD is actually technical.
 - Speak in a natural, highly human conversational tone. Avoid robotic clichés.
 - When asked "Who should I hire?" or to compare candidates, explain who leads on verified outcomes, role depth, and honest trade-offs.
+- If the recruiter asks to draft/write an email, invite, or rejection for a specific candidate name (e.g. "for Priya Sharma"), ALWAYS address it strictly to that exact named candidate — NEVER substitute a different candidate.
 - EMAIL DRAFTING & SENDING: Never claim an email is sent automatically—always remind the recruiter to click "Approve & Send Email", and output a \`\`\`vathmos_email_action JSON block using the candidate's email from CURRENT EVALUATED CANDIDATES SUMMARY (or the recruiter-specified email) as candidateEmail.
 
 ${workspaceContext}`;
@@ -2452,10 +2542,14 @@ ${workspaceContext}`;
     const isRejectRequest = msgLower.includes('reject') || msgLower.includes('pass') || msgLower.includes('declined') || msgLower.includes('not selected');
 
     if ((isInviteRequest || isRejectRequest || isSendRequest) && !reply.includes('```vathmos_email_action')) {
-      const topCand = candidatesSummary && candidatesSummary[0] ? candidatesSummary[0].name : 'Candidate';
-      const fallbackAddr = recruiterEmail || 'candidate@example.com';
-      const topEmail = specifiedEmail || (candidatesSummary && candidatesSummary[0]?.email) || fallbackAddr;
       const isRejection = isRejectRequest;
+      const { matched: actionCandObj, resolvedName: topCand } = resolveAssistantCandidate(
+        message,
+        candidatesSummary || [],
+        isRejection ? 'lowest' : 'top'
+      );
+      const fallbackAddr = recruiterEmail || 'candidate@example.com';
+      const topEmail = specifiedEmail || actionCandObj?.email || fallbackAddr;
       const actionType = isRejection ? 'rejection' : 'interview_invite';
       const subject = isRejection
         ? `Update regarding your application for ${domainCtx.roleTitle}`

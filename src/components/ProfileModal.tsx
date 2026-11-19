@@ -413,35 +413,136 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   }
 
+  function extractExplicitPersonName(query: string): string | null {
+    const m = query.match(
+      /\b(?:for|to|about|regarding|candidate)\s+([a-zA-Z'’-]+(?:\s+[a-zA-Z'’-]+){0,2})/i
+    );
+    if (!m?.[1]) return null;
+    const raw = m[1]
+      .replace(
+        /\b(please|pls|plz|now|today|asap|email|letter|invite|rejection|candidate|role|position|her|him|them)\b.*$/i,
+        ''
+      )
+      .trim();
+    if (!raw || raw.length < 2) return null;
+    if (/^(me|my|him|her|them|someone|candidate|everyone|all|us|this|that)$/i.test(raw)) {
+      return null;
+    }
+    return raw
+      .split(/\s+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  function resolveTargetCandidate(
+    query: string,
+    candidatesList: any[],
+    defaultMode: 'top' | 'lowest' = 'top'
+  ): { matched: any | null; resolvedName: string } {
+    const qLower = String(query || '').toLowerCase();
+    const safeList = Array.isArray(candidatesList) ? candidatesList : [];
+    const evaluatedOnly = safeList.filter((c) => typeof c?.score === 'number');
+    const pool = evaluatedOnly.length > 0 ? evaluatedOnly : safeList;
+
+    let bestCand: any | null = null;
+    let bestScore = 0;
+
+    for (const cand of safeList) {
+      const cleanName = String(cand?.name || '').replace(/\s*\(\d+\)$/, '').trim();
+      if (!cleanName || /^candidate\s*\d*$/i.test(cleanName)) continue;
+      const lowerName = cleanName.toLowerCase();
+
+      if (qLower.includes(lowerName)) {
+        const matchWeight = 100 + lowerName.length;
+        if (matchWeight > bestScore) {
+          bestScore = matchWeight;
+          bestCand = cand;
+        }
+        continue;
+      }
+
+      const tokens = lowerName.split(/\s+/).filter((t) => t.length >= 2);
+      let matchedTokens = 0;
+      for (const tok of tokens) {
+        const escaped = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (new RegExp(`\\b${escaped}\\b`, 'i').test(qLower)) {
+          matchedTokens++;
+        }
+      }
+      if (matchedTokens > 0) {
+        const matchWeight = matchedTokens * 20;
+        if (matchWeight > bestScore) {
+          bestScore = matchWeight;
+          bestCand = cand;
+        }
+      }
+    }
+
+    if (bestCand) {
+      return { matched: bestCand, resolvedName: bestCand.name };
+    }
+
+    const explicitTypedName = extractExplicitPersonName(query);
+    if (explicitTypedName) {
+      return { matched: null, resolvedName: explicitTypedName };
+    }
+
+    if (pool.length > 0) {
+      const fallback = defaultMode === 'lowest' ? pool[pool.length - 1] : pool[0];
+      return { matched: fallback, resolvedName: fallback?.name || 'Candidate' };
+    }
+
+    return { matched: null, resolvedName: 'Candidate' };
+  }
+
+  function renderFormattedCopilotText(text: string): React.ReactNode {
+    const parts = String(text || '').split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/g);
+    return parts.map((part, idx) => {
+      if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+        return (
+          <strong key={idx} className="font-semibold text-white">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+        return (
+          <em key={idx} className="italic text-zinc-200">
+            {part.slice(1, -1)}
+          </em>
+        );
+      }
+      return <React.Fragment key={idx}>{part}</React.Fragment>;
+    });
+  }
+
   const generateLocalCopilotReply = (
     query: string,
     candidates: any[],
     jd?: string
   ): string => {
     const q = (query || '').toLowerCase();
-    // Sort candidates by score descending to guarantee #1 is always the highest scoring candidate!
-    const sortedCandidates = [...(candidates || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+    const evaluatedCandidates = [...(candidates || [])]
+      .filter((c) => typeof c?.score === 'number')
+      .sort((a, b) => (b.score || 0) - (a.score || 0));
+    const sortedCandidates =
+      evaluatedCandidates.length > 0 ? evaluatedCandidates : [...(candidates || [])];
 
-    // If user mentioned a specific candidate name in the query, pick that candidate!
-    let targetCandObj = sortedCandidates[0];
-    if (sortedCandidates.length > 0) {
-      for (const cand of sortedCandidates) {
-        if (cand.name && q.includes(cand.name.toLowerCase().split(' ')[0])) {
-          targetCandObj = cand;
-          break;
-        }
-      }
-    }
-    const topCand = targetCandObj ? targetCandObj.name : 'Candidate';
+    const { matched: targetCandObj, resolvedName: targetName } = resolveTargetCandidate(
+      query,
+      sortedCandidates,
+      'top'
+    );
+    const topCand = targetName || 'Candidate';
     const topScore = targetCandObj?.score ?? 88;
     const emailMatch = query.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
     const userSpecifiedEmail = emailMatch ? emailMatch[1] : null;
-    const domainCtx = detectRoleDomain(jobDescription || '');
+    const domainCtx = detectRoleDomain(jd || jobDescription || '');
     const interviewType = domainCtx.isTechnical ? 'technical conversation' : 'interview conversation';
     const roundFocus = domainCtx.isTechnical
       ? 'your projects and how your background aligns with our roadmap'
       : 'your past achievements, workflow ownership, and fit for this role';
-    const destinationEmail = userSpecifiedEmail || currentUser.email || '97.vineet.8865@gmail.com';
+    const destinationEmail = userSpecifiedEmail || currentUser.email || 'candidate@example.com';
     const topEmail = userSpecifiedEmail || targetCandObj?.email || destinationEmail;
 
     // 0. Explicit request to send message / email to user or candidate
@@ -577,8 +678,11 @@ ${JSON.stringify(
 
     // 4. Rejection letter with human-in-the-loop action
     if (q.includes('reject') || q.includes('declined') || q.includes('pass') || q.includes('not selected')) {
-      const rejectCandObj = sortedCandidates.length > 1 ? sortedCandidates[sortedCandidates.length - 1] : targetCandObj;
-      const rejectCand = rejectCandObj ? rejectCandObj.name : topCand;
+      const { matched: rejectCandObj, resolvedName: rejectCand } = resolveTargetCandidate(
+        query,
+        sortedCandidates,
+        'lowest'
+      );
       const rejectEmail =
         userSpecifiedEmail ||
         rejectCandObj?.email ||
@@ -753,7 +857,13 @@ How can I assist your hiring decision right now?`;
     setCopilotQuery('');
     setCopilotLoading(true);
 
-    const candidatesSummary = completedCandidates.map((c) => {
+    const evaluatedIds = new Set(completedCandidates.map((c) => c.id));
+    const extraNamedCandidates = candidates.filter(
+      (c) =>
+        !evaluatedIds.has(c.id) &&
+        (Boolean(c.resumeText?.trim()) || (c.name && !/^candidate\s*\d*$/i.test(c.name.trim())))
+    );
+    const candidatesSummary = [...completedCandidates, ...extraNamedCandidates].map((c) => {
       const emailMatch = String(c.resumeText || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
       return {
         name: c.name,
@@ -772,7 +882,7 @@ How can I assist your hiring decision right now?`;
       let replyText = '';
       try {
         const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 7000);
+        const timer = setTimeout(() => ac.abort(), 12000);
         const res = await fetch('/api/assistant', {
           method: 'POST',
           headers: {
@@ -1512,7 +1622,9 @@ How can I assist your hiring decision right now?`;
                       )}
                     </div>
 
-                    <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                    <div className="whitespace-pre-wrap leading-relaxed">
+                      {renderFormattedCopilotText(msg.text)}
+                    </div>
 
                     {/* HUMAN-IN-THE-LOOP CANDIDATE EMAIL ACTION CARD */}
                     {msg.emailAction && (

@@ -63,6 +63,88 @@ function inferRoleInfo(jobDescription?: string): { roleTitle: string; isTechnica
   return { roleTitle, isTechnical, domainLabel };
 }
 
+function extractExplicitPersonName(query: string): string | null {
+  const m = query.match(
+    /\b(?:for|to|about|regarding|candidate)\s+([a-zA-Z'’-]+(?:\s+[a-zA-Z'’-]+){0,2})/i
+  );
+  if (!m?.[1]) return null;
+  const raw = m[1]
+    .replace(
+      /\b(please|pls|plz|now|today|asap|email|letter|invite|rejection|candidate|role|position|her|him|them)\b.*$/i,
+      ''
+    )
+    .trim();
+  if (!raw || raw.length < 2) return null;
+  if (/^(me|my|him|her|them|someone|candidate|everyone|all|us|this|that)$/i.test(raw)) {
+    return null;
+  }
+  return raw
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function resolveTargetCandidate(
+  query: string,
+  candidatesList: any[],
+  defaultMode: 'top' | 'lowest' = 'top'
+): { matched: any | null; resolvedName: string } {
+  const qLower = String(query || '').toLowerCase();
+  const safeList = Array.isArray(candidatesList) ? candidatesList : [];
+  const evaluatedOnly = safeList.filter((c) => typeof c?.score === 'number');
+  const pool = evaluatedOnly.length > 0 ? evaluatedOnly : safeList;
+
+  let bestCand: any | null = null;
+  let bestScore = 0;
+
+  for (const cand of safeList) {
+    const cleanName = String(cand?.name || '').replace(/\s*\(\d+\)$/, '').trim();
+    if (!cleanName || /^candidate\s*\d*$/i.test(cleanName)) continue;
+    const lowerName = cleanName.toLowerCase();
+
+    if (qLower.includes(lowerName)) {
+      const matchWeight = 100 + lowerName.length;
+      if (matchWeight > bestScore) {
+        bestScore = matchWeight;
+        bestCand = cand;
+      }
+      continue;
+    }
+
+    const tokens = lowerName.split(/\s+/).filter((t) => t.length >= 2);
+    let matchedTokens = 0;
+    for (const tok of tokens) {
+      const escaped = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`\\b${escaped}\\b`, 'i').test(qLower)) {
+        matchedTokens++;
+      }
+    }
+    if (matchedTokens > 0) {
+      const matchWeight = matchedTokens * 20;
+      if (matchWeight > bestScore) {
+        bestScore = matchWeight;
+        bestCand = cand;
+      }
+    }
+  }
+
+  if (bestCand) {
+    return { matched: bestCand, resolvedName: bestCand.name };
+  }
+
+  const explicitTypedName = extractExplicitPersonName(query);
+  if (explicitTypedName) {
+    return { matched: null, resolvedName: explicitTypedName };
+  }
+
+  if (pool.length > 0) {
+    const fallback = defaultMode === 'lowest' ? pool[pool.length - 1] : pool[0];
+    return { matched: fallback, resolvedName: fallback?.name || 'Candidate' };
+  }
+
+  return { matched: null, resolvedName: 'Candidate' };
+}
+
 function generateRecruiterAssistantResponse(
   message: string,
   candidatesSummary?: any[],
@@ -78,15 +160,17 @@ function generateRecruiterAssistantResponse(
     ? 'your projects and technical decisions'
     : 'your past results, workflow ownership, and role fit';
 
-  const sortedCandidates = [...(candidatesSummary || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
-  let targetCandObj = sortedCandidates[0];
-  for (const cand of sortedCandidates) {
-    if (cand.name && msgLower.includes(String(cand.name).toLowerCase().split(' ')[0])) {
-      targetCandObj = cand;
-      break;
-    }
-  }
-  const topCand = targetCandObj ? targetCandObj.name : 'Candidate';
+  const evaluatedCandidates = [...(candidatesSummary || [])]
+    .filter((c) => typeof c?.score === 'number')
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
+  const sortedCandidates =
+    evaluatedCandidates.length > 0 ? evaluatedCandidates : [...(candidatesSummary || [])];
+
+  const { matched: targetCandObj, resolvedName: topCand } = resolveTargetCandidate(
+    msg,
+    sortedCandidates,
+    'top'
+  );
   const topScore = targetCandObj?.score ?? 88;
 
   const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
@@ -223,8 +307,11 @@ ${JSON.stringify(action, null, 2)}
 
   // 5. Draft rejection letter
   if (msgLower.includes('reject') || msgLower.includes('declined') || msgLower.includes('pass') || msgLower.includes('not selected')) {
-    const rejectCandObj = sortedCandidates.length > 1 ? sortedCandidates[sortedCandidates.length - 1] : targetCandObj;
-    const rejectCand = rejectCandObj ? rejectCandObj.name : topCand;
+    const { matched: rejectCandObj, resolvedName: rejectCand } = resolveTargetCandidate(
+      msg,
+      sortedCandidates,
+      'lowest'
+    );
     const rejectEmail = specifiedEmail || rejectCandObj?.email || fallbackAddr;
     const action = {
       type: 'rejection',
@@ -310,6 +397,7 @@ export default async function handler(req: any, res: any) {
 RULES:
 - Adapt strictly to the actual role (${roleTitle}). Never say "Engineering Team" or "technical round" unless the JD is engineering/technical.
 - Never invent candidate metrics or quotes not in the summary.
+- If the recruiter asks to draft/write a letter, invite, or rejection for a specific candidate name (e.g. "for Priya Sharma"), ALWAYS address it strictly to that exact named candidate — NEVER substitute a different candidate.
 - When asked to draft/send an interview invite, rejection, or forward an email, ALWAYS include a \`\`\`vathmos_email_action JSON block with type ("interview_invite"|"rejection"), candidateName, candidateEmail (prefer email from CANDIDATES SUMMARY or recruiter-specified address), subject, body, and screeningQuestions, and remind the recruiter that nothing sends without clicking Approve & Send.
 ${contextBlock}`;
 
